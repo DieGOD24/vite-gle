@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Copy of Copy of Copy of Copy of Copy of GLE SmartSales Dashboard",
+  "description": "A commercial dashboard for GLE Colombia to monitor sales activities, track performance, and manage client data registered through the IA GLE SmartSales WhatsApp agent.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
