@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Role, Visit, Prospect, Closure } from '../types';
-// No necesitas la importación de mockData, ¡ya se eliminó!
 
 import KpiCard from './ui/KpiCard';
 import RegionalAnalysis from './RegionalAnalysis';
@@ -52,11 +51,21 @@ const Dashboard: React.FC<DashboardProps> = ({
   onValidateVisit, 
   onUpdateClient 
 }) => {
-  
-  // ... (hooks useState, useEffect, etc. sin cambios) ...
+
+  // ---------------------------
+  // ESTADO DEL MODAL DE LOGOUT
+  // ---------------------------
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const handleConfirmLogout = () => {
+    setShowLogoutModal(false);
+    onLogout();
+  };
+  // ---------------------------
+
   const isCommercial = user.cargo === Role.COMERCIAL;
   const isManager = user.cargo === Role.ADMIN || user.cargo === Role.DIRECTOR || user.cargo === Role.LIDER_REGIONAL;
-  
+
   const [activeTab, setActiveTab] = useState(isCommercial ? 'registrar' : 'resumen');
   const [selectedRegion, setSelectedRegion] = useState<string>(user.cargo === Role.LIDER_REGIONAL ? user.regional : '');
   const [selectedCommercial, setSelectedCommercial] = useState<string>('');
@@ -64,6 +73,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     start: lastMonth.toISOString().split('T')[0],
     end: today.toISOString().split('T')[0],
   });
+
   const [activeVisit, setActiveVisit] = useState<ActiveVisit | null>(null);
 
   useEffect(() => {
@@ -92,7 +102,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     setActiveVisit(null);
     localStorage.removeItem('activeVisit');
   };
-  
+
   const REGIONS = useMemo(() => {
     if (user.cargo === Role.LIDER_REGIONAL) return [user.regional];
     return ['Bogotá', 'Medellín', 'Barranquilla', 'Cali'];
@@ -110,7 +120,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [user, selectedRegion, users]);
 
   const { filteredVisits, filteredProspects, filteredClosures, previousPeriodData } = useMemo(() => {
-    // CORRECCIÓN: Añadimos .filter(Boolean) para limpiar nulos
+    
     let baseVisits = visits.filter(Boolean);
     let baseProspects = prospects.filter(Boolean);
     let baseClosures = closures.filter(Boolean);
@@ -171,26 +181,24 @@ const Dashboard: React.FC<DashboardProps> = ({
             closures: previousClosures,
         }
     };
-  }, [user, selectedRegion, selectedCommercial, dateRange, visits, prospects, closures, users]); 
-  
+  }, [user, selectedRegion, selectedCommercial, dateRange, visits, prospects, closures, users]);
 
-  // --- CORRECCIÓN DEL BUG ---
-  // Este 'useMemo' estaba causando el "choque" de la aplicación.
+  // CORRECCIÓN CLIENTS FOR VIEW
   const clientsForView = useMemo(() => {
     const clientMap = new Map<string, { name: string; nit: string }>();
     
-    // CORRECCIÓN: Filtramos cualquier posible 'null' o 'undefined' de las props
     const cleanVisits = visits.filter(Boolean);
     const cleanProspects = prospects.filter(Boolean);
     const cleanClosures = closures.filter(Boolean);
-    
+
     let interactions: (Visit | Prospect | Closure)[] = [];
 
     if (user.cargo === Role.COMERCIAL) {
-        const commercialVisits = cleanVisits.filter(v => v.cedula_ejecutivo === user.cedula);
-        const commercialProspects = cleanProspects.filter(p => p.comercial_cedula === user.cedula);
-        const commercialClosures = cleanClosures.filter(c => c.comercial_cedula === user.cedula);
-        interactions = [...commercialVisits, ...commercialProspects, ...commercialClosures];
+        interactions = [
+          ...cleanVisits.filter(v => v.cedula_ejecutivo === user.cedula),
+          ...cleanProspects.filter(p => p.comercial_cedula === user.cedula),
+          ...cleanClosures.filter(c => c.comercial_cedula === user.cedula)
+        ];
     } else {
         interactions = [...cleanVisits, ...cleanProspects, ...cleanClosures];
     }
@@ -198,27 +206,17 @@ const Dashboard: React.FC<DashboardProps> = ({
     interactions.forEach(item => {
         let name: string | undefined;
 
-        // Lógica corregida para encontrar el nombre basado en types.ts
-        if ('nombre_cliente' in item) {
-            name = item.nombre_cliente; // Es una Visita
-        } else if ('nombre_empresa' in item) {
-            name = item.nombre_empresa; // Es un Prospecto
-        } else if ('cliente' in item) {
-            name = item.cliente; // Es un Cierre
-        }
+        if ('nombre_cliente' in item) name = item.nombre_cliente;
+        else if ('nombre_empresa' in item) name = item.nombre_empresa;
+        else if ('cliente' in item) name = item.cliente;
 
-        // Solo añadir al mapa si encontramos un nombre y un NIT
         if (name && item.nit && !clientMap.has(item.nit)) {
             clientMap.set(item.nit, { name, nit: item.nit });
         }
     });
     
-    // Esto ahora es seguro y no fallará
     return Array.from(clientMap.values()).sort((a,b) => a.name.localeCompare(b.name));
-
   }, [user, visits, prospects, closures]);
-  // --- FIN DE LA CORRECIÓN ---
-
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -257,12 +255,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 dateRange={dateRange}
             />;
         case 'analisis-regional':
-             return <RegionalAnalysis 
-                visits={visits}
-                prospects={prospects}
-                closures={closures}
-                users={users}
-            />;
+             return <RegionalAnalysis visits={visits} prospects={prospects} closures={closures} users={users} />;
         case 'analisis-ejecutivo':
              return <CommercialAnalysis 
                 commercialUsers={commercialUsersForFilter}
@@ -272,11 +265,18 @@ const Dashboard: React.FC<DashboardProps> = ({
                 onValidateVisit={onValidateVisit}
              />;
         case 'clientes':
-            return <ClientAnalysis clients={clientsForView} visits={visits} prospects={prospects} closures={closures} user={user} onUpdateClient={onUpdateClient} />;
+            return <ClientAnalysis 
+              clients={clientsForView} 
+              visits={visits} 
+              prospects={prospects} 
+              closures={closures} 
+              user={user} 
+              onUpdateClient={onUpdateClient} 
+            />;
         default:
             return null;
      }
-  }
+  };
 
   const baseTabs = [
     { id: 'registrar', name: 'Registrar Actividad', icon: 'fa-edit', roles: [Role.COMERCIAL] },
@@ -287,10 +287,40 @@ const Dashboard: React.FC<DashboardProps> = ({
     { id: 'clientes', name: 'Información de Clientes', icon: 'fa-users', roles: [Role.COMERCIAL, Role.ADMIN, Role.DIRECTOR, Role.LIDER_REGIONAL] }
   ];
 
-  const visibleTabs = baseTabs.filter(tab => tab.roles.includes(user.cargo as Role)); 
-  
+  const visibleTabs = baseTabs.filter(tab => tab.roles.includes(user.cargo as Role));
+
   return (
     <div className="flex h-screen bg-gle-gray-light">
+
+      {/* ------------------------ MODAL LOGOUT ------------------------ */}
+      {showLogoutModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-80 text-center">
+            <h2 className="text-xl font-bold text-gray-800 mb-4">
+              ¿Cerrar sesión?
+            </h2>
+            <p className="text-gray-600 mb-6">
+              ¿Estás seguro de que deseas cerrar sesión?
+            </p>
+            <div className="flex justify-between gap-4">
+              <button 
+                onClick={() => setShowLogoutModal(false)}
+                className="w-1/2 bg-gray-300 text-gray-800 py-2 rounded hover:bg-gray-400"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleConfirmLogout}
+                className="w-1/2 bg-red-600 text-white py-2 rounded hover:bg-red-700"
+              >
+                Sí, cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* -------------------------------------------------------------- */}
+
       <nav className="w-64 bg-gle-gray-dark text-white flex flex-col shrink-0">
         <div className="p-4 border-b border-gray-700 flex items-center space-x-2">
             <GleLogo logo={logo} style={{ height: '40px' }} />
@@ -316,10 +346,17 @@ const Dashboard: React.FC<DashboardProps> = ({
       </nav>
 
       <main className="flex-1 flex flex-col">
-        {activeVisit && isCommercial && <ActiveVisitBanner activeVisit={activeVisit} onEndVisit={() => setActiveTab('registrar')} />}
+        {activeVisit && isCommercial && (
+          <ActiveVisitBanner 
+            activeVisit={activeVisit} 
+            onEndVisit={() => setActiveTab('registrar')} 
+          />
+        )}
+
         <header className="bg-white shadow-md p-4 flex justify-between items-center z-10">
           <h1 className="text-2xl font-bold text-gle-gray-dark">Dashboard de Control</h1>
           <div className="flex items-center space-x-4">
+
             {user.cargo === Role.ADMIN && (
               <>
                 <input
@@ -329,56 +366,97 @@ const Dashboard: React.FC<DashboardProps> = ({
                   accept="image/*"
                   onChange={handleLogoUpload}
                 />
-                <label htmlFor="logo-upload" className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 transition duration-200 flex items-center space-x-2 cursor-pointer">
+                <label 
+                  htmlFor="logo-upload" 
+                  className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 transition duration-200 flex items-center space-x-2 cursor-pointer"
+                >
                   <i className="fas fa-upload"></i>
                   <span>Cambiar Logo</span>
                 </label>
               </>
             )}
-            <button onClick={onLogout} className="bg-gle-red text-white px-4 py-2 rounded hover:bg-red-700 transition duration-200 flex items-center space-x-2">
+
+            {/* BOTÓN ACTUALIZADO QUE ABRE EL MODAL */}
+            <button 
+              onClick={() => setShowLogoutModal(true)}
+              className="bg-gle-red text-white px-4 py-2 rounded hover:bg-red-700 transition duration-200 flex items-center space-x-2"
+            >
               <i className="fas fa-sign-out-alt"></i>
               <span>Cerrar Sesión</span>
             </button>
+
           </div>
         </header>
+
         {isManager && ['resumen', 'analisis-ejecutivo'].includes(activeTab) && (
             <div className="bg-white p-4 shadow-md grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Región</label>
-                    <select value={selectedRegion} onChange={e => { setSelectedRegion(e.target.value); setSelectedCommercial(''); }} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" disabled={user.cargo === Role.LIDER_REGIONAL}>
+                    <select 
+                      value={selectedRegion} 
+                      onChange={e => { setSelectedRegion(e.target.value); setSelectedCommercial(''); }} 
+                      className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" 
+                      disabled={user.cargo === Role.LIDER_REGIONAL}
+                    >
                         <option value="">Todas las Regiones</option>
                         {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Ejecutivo Comercial</label>
-                    <select value={selectedCommercial} onChange={e => setSelectedCommercial(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                    <select 
+                      value={selectedCommercial} 
+                      onChange={e => setSelectedCommercial(e.target.value)} 
+                      className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
+                    >
                         <option value="">Todos los Ejecutivos</option>
                         {commercialUsersForFilter.map(u => <option key={u.cedula} value={u.cedula}>{u.nombre}</option>)}
                     </select>
                 </div>
                 <div>
                     <label className="block text-sm font-medium text-gray-700">Fecha Inicio</label>
-                    <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({...prev, start: e.target.value}))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+                    <input 
+                      type="date" 
+                      value={dateRange.start} 
+                      onChange={e => setDateRange(prev => ({...prev, start: e.target.value}))} 
+                      className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" 
+                    />
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-gray-700">Fecha Fin</label>
-                    <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({...prev, end: e.target.value}))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+                    <input 
+                      type="date" 
+                      value={dateRange.end} 
+                      onChange={e => setDateRange(prev => ({...prev, end: e.target.value}))} 
+                      className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" 
+                    />
                 </div>
             </div>
         )}
-         {isCommercial && ['registros', 'clientes'].includes(activeTab) && (
+
+        {isCommercial && ['registros', 'clientes'].includes(activeTab) && (
              <div className="bg-white p-4 shadow-md grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                  <div>
                     <label className="block text-sm font-medium text-gray-700">Fecha Inicio</label>
-                    <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({...prev, start: e.target.value}))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+                    <input 
+                      type="date" 
+                      value={dateRange.start} 
+                      onChange={e => setDateRange(prev => ({...prev, start: e.target.value}))} 
+                      className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" 
+                    />
                 </div>
                  <div>
                     <label className="block text-sm font-medium text-gray-700">Fecha Fin</label>
-                    <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({...prev, end: e.target.value}))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+                    <input 
+                      type="date" 
+                      value={dateRange.end} 
+                      onChange={e => setDateRange(prev => ({...prev, end: e.target.value}))} 
+                      className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" 
+                    />
                 </div>
              </div>
          )}
+
         <div className="flex-1 p-6 overflow-y-auto">
             {renderContent()}
         </div>
