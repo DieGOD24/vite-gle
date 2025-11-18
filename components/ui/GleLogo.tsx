@@ -1,4 +1,5 @@
 import React from 'react';
+import logoImg from '../../assets/logo.jpg';  // Ajusta la ruta según donde esté tu componente
 
 interface GleLogoProps {
     className?: string;
@@ -7,11 +8,19 @@ interface GleLogoProps {
 }
 
 const GleLogo: React.FC<GleLogoProps> = ({ className, style, logo }) => {
-    if (logo) {
-        return <img src={logo} alt="Company Logo" className={className} style={{ ...style, objectFit: 'contain' }} />;
+    const finalLogo = logo ?? logoImg;
+
+    if (finalLogo) {
+        return (
+            <img
+                src={finalLogo}
+                alt="Company Logo"
+                className={className}
+                style={{ ...style, objectFit: 'contain' }}
+            />
+        );
     }
-    
-    // Default text-based logo
+
     return (
         <div className={className} style={style}>
             <span 
