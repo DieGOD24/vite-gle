@@ -20,6 +20,7 @@ export enum VisitType {
 }
 
 export interface Visit {
+  nombre_cliente: string;
   id: string;
   cedula_ejecutivo: string;
   nombre_ejecutivo: string;
@@ -58,6 +59,7 @@ export interface Prospect {
 }
 
 export interface Closure {
+    valor_estimado: number;
     id: string;
     cliente: string;
     nit: string;
