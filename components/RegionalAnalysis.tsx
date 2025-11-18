@@ -27,29 +27,33 @@ const RegionalAnalysis: React.FC<RegionalAnalysisProps> = ({ visits, prospects, 
   });
     
   const regionalData = useMemo(() => {
-    const start = dateRange.start ? new Date(dateRange.start) : null;
-    const end = dateRange.end ? new Date(dateRange.end) : null;
-    if (end) end.setHours(23, 59, 59, 999);
+    
+    // --- CORRECCIÓN DEL BUG DE FECHA (UTC vs Local) ---
+    // Forzamos a que las fechas del filtro se interpreten como hora local
+    const start = dateRange.start ? new Date(`${dateRange.start}T00:00:00`) : null;
+    const end = dateRange.end ? new Date(`${dateRange.end}T23:59:59`) : null;
 
-    // 5. CORRECCIÓN: Convertimos las fechas (string) a objetos Date para comparar
     const filterByDate = (item: { fecha_hora?: string, fecha_registro?: string, fecha_cierre?: string }) => {
         if (!start || !end) return true;
         
-        // La API envía strings (ej: "2025-11-17" o "2025-11-17T15:00:00Z")
         const itemDateStr = item.fecha_hora || item.fecha_registro || item.fecha_cierre;
         if (!itemDateStr) return false;
         
-        const itemDate = new Date(itemDateStr); // Convertimos el string a Date
+        // new Date(string) convierte el string (que viene en UTC) a la fecha local correcta
+        const itemDate = new Date(itemDateStr); 
+        
+        // La comparación ahora es Local vs Local y funciona
         return itemDate >= start && itemDate <= end;
     };
+    // --- FIN DE LA CORRECCIÓN DE FECHA ---
       
     // Limpiamos nulos/undefined antes de filtrar
     const filteredVisits = visits.filter(Boolean).filter(filterByDate);
     const filteredProspects = prospects.filter(Boolean).filter(filterByDate);
     const filteredClosures = closures.filter(Boolean).filter(filterByDate);
 
-    // 6. CORRECCIÓN: Tipamos el acumulador del 'reduce'
-    const commercialUsersByRegion = users.reduce((acc: Record<string, Set<string>>, user) => {
+    // Tipamos el acumulador del 'reduce' para evitar errores de TypeScript
+    const commercialUsersByRegion = users.filter(Boolean).reduce((acc: Record<string, Set<string>>, user) => {
         // Usamos el Enum 'Role' para una comparación segura
         if (user.cargo === Role.COMERCIAL || user.cargo === 'Comercial') { 
             if (!acc[user.regional]) {
@@ -58,7 +62,7 @@ const RegionalAnalysis: React.FC<RegionalAnalysisProps> = ({ visits, prospects, 
             acc[user.regional].add(user.cedula);
         }
         return acc;
-    }, {} as Record<string, Set<string>>); // <-- Y el valor inicial
+    }, {} as Record<string, Set<string>>);
 
     return REGIONS.map(region => {
       const regionCommercials = commercialUsersByRegion[region] || new Set();
@@ -79,13 +83,12 @@ const RegionalAnalysis: React.FC<RegionalAnalysisProps> = ({ visits, prospects, 
         conversionRate,
       };
     });
-  }, [visits, prospects, closures, dateRange, users]); // 7. CORRECCIÓN: Añadimos 'users' a las dependencias
+  }, [visits, prospects, closures, dateRange, users]); // Añadimos 'users' a las dependencias
 
   return (
     <div className="space-y-6">
       <h2 className="text-3xl font-bold text-gray-800">Análisis Comparativo por Región</h2>
       
-      {/* ... (El resto de tu JSX es perfecto y no necesita cambios) ... */}
       <div className="bg-white p-4 shadow-md grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
           <div>
               <label className="block text-sm font-medium text-gray-700">Fecha Inicio</label>

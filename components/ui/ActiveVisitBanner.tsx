@@ -38,12 +38,7 @@ const ActiveVisitBanner: React.FC<ActiveVisitBannerProps> = ({ activeVisit, onEn
                         {elapsedTime}
                     </div>
                 </div>
-                <button
-                    onClick={onEndVisit}
-                    className="bg-white text-gle-red font-bold py-2 px-4 rounded-lg hover:bg-gray-200 transition duration-300"
-                >
-                    Finalizar y Registrar Visita
-                </button>
+
             </div>
         </div>
     );

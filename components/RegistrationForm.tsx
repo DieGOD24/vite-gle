@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, Visit, Prospect, Closure, VisitType } from '../types';
-// 1. ELIMINAMOS las importaciones de API. El padre se encargará de esto.
-// import { postVisit, postProspect, postClosure } from '../services/api'; 
+import { postVisit, postProspect, postClosure } from '../services/api';
 
 interface ActiveVisit {
     clientName: string;
@@ -13,7 +12,6 @@ interface RegistrationFormProps {
     user: User;
     activeVisit: ActiveVisit | null;
     onStartVisit: (clientName: string, clientNit: string) => void;
-    // 2. Ajustamos las props para que acepten los datos SIN PROCESAR (sin ID)
     onRegisterVisit: (visit: Omit<Visit, 'id_visita' | 'creado_en'>) => Promise<void>;
     onAddProspect: (prospect: Omit<Prospect, 'id_prospecto' | 'creado_en'>) => Promise<void>;
     onAddClosure: (closure: Omit<Closure, 'id_cierre' | 'creado_en'>) => Promise<void>;
@@ -22,7 +20,6 @@ interface RegistrationFormProps {
 
 type LocationStatus = 'idle' | 'pending' | 'success' | 'error';
 
-// ... (El componente LocationStatusIndicator no cambia) ...
 const LocationStatusIndicator: React.FC<{ status: LocationStatus; onRetry: () => void }> = ({ status, onRetry }) => {
     switch (status) {
         case 'pending':
@@ -54,7 +51,6 @@ const LocationStatusIndicator: React.FC<{ status: LocationStatus; onRetry: () =>
     }
 };
 
-
 const RegistrationForm: React.FC<RegistrationFormProps> = ({
     user,
     activeVisit,
@@ -64,7 +60,6 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
     onAddClosure,
     onClearActiveVisit
 }) => {
-    // ... (El resto de los hooks useState, getLocation, useEffect, etc. no cambian) ...
     const [startFormData, setStartFormData] = useState({ clientName: '', clientNit: '' });
     const [finalFormData, setFinalFormData] = useState<any>({});
     const [outcomeType, setOutcomeType] = useState<VisitType>(VisitType.MANTENIMIENTO);
@@ -113,18 +108,14 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
         setLocationStatus('idle');
     };
 
-
     const handleFinalSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!activeVisit) return;
-
         try {
             const visitMotivo = finalFormData.motivo || outcomeType;
             if (!['prospecto', 'mantenimiento', 'cierre'].includes(visitMotivo)) {
                 throw new Error('Motivo no válido');
             }
-
-            // 3. Creamos el objeto 'newVisit' (SIN ID)
             const newVisit = {
                 nombre_ejecutivo: user.nombre,
                 nombre_cliente: activeVisit.clientName,
@@ -134,25 +125,17 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
                 correo: finalFormData.correo || '',
                 telefono: finalFormData.telefono || '',
                 motivo: visitMotivo,
-                fecha_hora: new Date().toISOString(), 
+                fecha_hora: new Date().toISOString(),
                 observaciones: finalFormData.observaciones || '',
-                estado: 'registrado', 
-                creado_por: user.cedula, 
+                estado: 'registrado',
+                creado_por: user.cedula,
                 cedula_ejecutivo: user.cedula,
                 lat: location ? parseFloat(location.lat.toFixed(6)) : undefined,
                 lng: location ? parseFloat(location.lon.toFixed(6)) : undefined,
                 sucursal: finalFormData.sucursal || '',
-                evidencia_urls: finalFormData.evidencia_urls 
-                    ? finalFormData.evidencia_urls.split('\n') 
-                    : []
             };
-
-            // 4. LLAMAMOS AL PADRE (App.tsx) PARA QUE HAGA EL POST
-            // Ya no hacemos 'postVisit(newVisit)' aquí.
             await onRegisterVisit(newVisit);
-
             if (visitMotivo === VisitType.PROSPECTO) {
-                // 5. Creamos el objeto 'newProspect' (SIN ID)
                 const newProspect = {
                     comercial_cedula: user.cedula,
                     nombre_empresa: activeVisit.clientName,
@@ -165,16 +148,12 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
                     sector: finalFormData.sector,
                     compromisos: finalFormData.compromisos,
                     fecha_registro: new Date().toISOString().split('T')[0],
-                    estado: 'contactado', 
+                    estado: 'contactado',
                     observaciones: finalFormData.observaciones || '',
                 };
-                // 6. LLAMAMOS AL PADRE (App.tsx)
                 await onAddProspect(newProspect);
-
             } else if (visitMotivo === VisitType.CIERRE) {
-                
-                // 7. Creamos el objeto 'newClosure' (SIN ID)
-                const newClosure = { 
+                const newClosure = {
                     comercial_cedula: user.cedula,
                     cliente: activeVisit.clientName,
                     nit: activeVisit.clientNit,
@@ -183,35 +162,29 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
                     tipo_cierre: finalFormData.tipo_cierre,
                     fecha_cierre: new Date().toISOString().split('T')[0],
                     valor_estimado: Number(finalFormData.valor) || 0,
-                    regional: user.regional, 
+                    regional: user.regional,
                     ciudad: finalFormData.ciudad || user.ciudad,
                     observaciones: finalFormData.observaciones || '',
                     compromisos: finalFormData.compromisos || '',
-                    evidencia_urls: finalFormData.evidencia_urls 
-                        ? finalFormData.evidencia_urls.split('\n') 
-                        : []
                 };
-                // 8. LLAMAMOS AL PADRE (App.tsx)
                 await onAddClosure(newClosure);
             }
-
-            // 9. El resto de la lógica de UI (éxito/error)
+            onClearActiveVisit();
             setShowSuccess(true);
+            resetFinalState();
             setTimeout(() => {
                 setShowSuccess(false);
-                onClearActiveVisit();
-                resetFinalState();
             }, 3000);
         } catch (error) {
             console.error("Error al guardar los datos:", error);
-            // El error ahora vendrá de la función del padre (App.tsx)
             setErrorMessage("Ocurrió un error al guardar los datos. Por favor, inténtalo de nuevo.");
             setShowError(true);
-            setTimeout(() => setShowError(false), 5000);
+            setTimeout(() => {
+                setShowError(false);
+                setErrorMessage('');
+            }, 5000);
         }
     };
-
-    // ... (El resto del JSX: renderFinalFormFields, if (showSuccess), etc. no cambia) ...
 
     const renderFinalFormFields = () => {
         const commonFields = (
@@ -221,7 +194,6 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
                 <InputField label="Teléfono" name="telefono" type="tel" value={finalFormData.telefono || ''} onChange={handleFinalFormChange} required />
                 <InputField label="Correo Electrónico" name="correo" type="email" value={finalFormData.correo || ''} onChange={handleFinalFormChange} required />
                 <InputField label="Sucursal" name="sucursal" value={finalFormData.sucursal || ''} onChange={handleFinalFormChange} />
-                <TextAreaField label="URLs de Evidencia (una por línea)" name="evidencia_urls" value={finalFormData.evidencia_urls || ''} onChange={handleFinalFormChange} />
             </>
         );
         switch (outcomeType) {
@@ -231,8 +203,6 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
                         {commonFields}
                         <InputField label="Ciudad" name="ciudad" value={finalFormData.ciudad || ''} onChange={handleFinalFormChange} required />
                         <InputField label="Sector / Actividad" name="sector" value={finalFormData.sector || ''} onChange={handleFinalFormChange} required />
-                        {/* Asumimos que 'fecha_posible_cierre' no existe en el 'types.ts' actualizado */}
-                        <InputField label="Fecha Posible Cierre (Opcional)" name="fecha_posible_cierre" type="date" value={finalFormData.fecha_posible_cierre || ''} onChange={handleFinalFormChange} />
                         <TextAreaField label="Compromisos" name="compromisos" value={finalFormData.compromisos || ''} onChange={handleFinalFormChange} required />
                         <TextAreaField label="Observaciones" name="observaciones" value={finalFormData.observaciones || ''} onChange={handleFinalFormChange} />
                     </>
@@ -328,8 +298,6 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
         </div>
     );
 };
-
-// --- Componentes de Formulario (sin cambios) ---
 
 const InputField = ({ label, name, type = 'text', onChange, required = false, value = '' }: { label: string; name: string; type?: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; required?: boolean; value?: string }) => (
     <div>
