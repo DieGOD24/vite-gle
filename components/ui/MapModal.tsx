@@ -37,7 +37,7 @@ const MapModal: React.FC<MapModalProps> = ({
       container: mapContainerRef.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [commercialLocation.lng, commercialLocation.lat],
-      zoom: 17,
+      zoom: 15,
       attributionControl: false,
     });
 
