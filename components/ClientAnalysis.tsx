@@ -1,281 +1,271 @@
-
-import React, { useMemo, useState } from 'react';
-import { Visit, Prospect, Closure, User, Role } from '../types';
-import { users } from '../services/mockData';
+import React, { useState, useMemo } from 'react';
+import { User, Visit, Prospect, Closure, VisitType } from '../types';
 import KpiCard from './ui/KpiCard';
-import { RadialBarChart, RadialBar, PolarAngleAxis, ResponsiveContainer } from 'recharts';
-import ClientEditModal from './ui/ClientEditModal';
+import DataTable from './ui/DataTable';
 
 interface ClientAnalysisProps {
-    clients: { name: string; nit: string }[];
-    visits: Visit[];
-    prospects: Prospect[];
-    closures: Closure[];
-    user: User;
-    onUpdateClient: (nit: string, data: any) => void;
+  clients: { name: string; nit: string }[];
+  visits: Visit[];
+  prospects: Prospect[];
+  closures: Closure[];
+  user: User;
+  onUpdateClient: (nit: string, data: any) => void;
 }
 
-const getIconForType = (type: string) => {
-    switch (type) {
-        case 'Visita': return { icon: 'fa-route', color: 'blue-500' };
-        case 'Prospecto': return { icon: 'fa-user-plus', color: 'gle-red' };
-        case 'Cierre': return { icon: 'fa-handshake', color: 'green-500' };
-        default: return { icon: 'fa-question-circle', color: 'gray-500' };
-    }
+const formatDate = (date: string | Date | null | undefined): string => {
+  if (!date) return 'N/A';
+  const d = new Date(date);
+  return d.toLocaleDateString('es-CO');
 };
 
-const ClientCard: React.FC<{client: {name: string, nit: string}, onClick: () => void}> = ({ client, onClick }) => (
-    <button 
-        onClick={onClick} 
-        className="w-full text-left bg-white p-4 rounded-lg shadow-md hover:shadow-xl hover:border-gle-red border-2 border-transparent transition-all duration-300"
-        aria-label={`Ver detalles de ${client.name}`}
-    >
-        <div className="flex items-center space-x-4">
-            <div className="bg-gle-gray-light rounded-full h-12 w-12 flex items-center justify-center shrink-0">
-                <i className="fas fa-building text-gle-red text-xl"></i>
-            </div>
-            <div className="overflow-hidden">
-                <p className="font-bold text-gle-gray-dark truncate">{client.name}</p>
-                <p className="text-sm text-gray-500">NIT: {client.nit}</p>
-            </div>
-        </div>
-    </button>
-);
+const ClientAnalysis: React.FC<ClientAnalysisProps> = ({
+  clients,
+  visits,
+  prospects,
+  closures,
+  user,
+  onUpdateClient
+}) => {
+  const [selectedClientNit, setSelectedClientNit] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Fechas por defecto (Mes actual)
+  const today = new Date();
+  const lastMonth = new Date(today);
+  lastMonth.setMonth(today.getMonth() - 1);
 
+  const [dateRange, setDateRange] = useState({
+    start: lastMonth.toISOString().split('T')[0],
+    end: today.toISOString().split('T')[0],
+  });
 
-const ClientAnalysis: React.FC<ClientAnalysisProps> = ({ clients, visits, prospects, closures, user, onUpdateClient }) => {
-    const [selectedNit, setSelectedNit] = useState<string>('');
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isEditModalOpen, setEditModalOpen] = useState(false);
-    
-    const filteredClients = useMemo(() => {
-        if (!searchTerm) return clients;
-        const lowercasedFilter = searchTerm.toLowerCase();
-        return clients.filter(c => 
-            c.name.toLowerCase().includes(lowercasedFilter) ||
-            c.nit.toLowerCase().includes(lowercasedFilter)
-        );
-    }, [searchTerm, clients]);
+  // Filtrar lista de clientes por búsqueda
+  const filteredClients = useMemo(() => {
+    return clients.filter(c => 
+      c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      c.nit.includes(searchTerm)
+    );
+  }, [clients, searchTerm]);
 
-    const clientData = useMemo(() => {
-        if (!selectedNit) return null;
-        
-        let clientVisits = visits.filter(v => v.nit === selectedNit);
-        let clientProspects = prospects.filter(p => p.nit === selectedNit);
-        let clientClosures = closures.filter(c => c.nit === selectedNit);
-        
-        if(user.cargo === Role.COMERCIAL) {
-            clientVisits = clientVisits.filter(v => v.cedula_ejecutivo === user.cedula);
-            clientProspects = clientProspects.filter(p => p.cedula_comercial === user.cedula);
-            clientClosures = clientClosures.filter(c => c.cedula_comercial === user.cedula);
-        }
-        
-        const assignedCommercials = [...new Set(
-            [
-                ...visits.filter(v => v.nit === selectedNit).map(v => v.nombre_ejecutivo),
-                ...prospects.filter(p => p.nit === selectedNit).map(p => users.find(u => u.cedula === p.cedula_comercial)?.nombre),
-                ...closures.filter(c => c.nit === selectedNit).map(c => users.find(u => u.cedula === c.cedula_comercial)?.nombre)
-            ].filter(Boolean)
-        )];
-        
-        const timeline = [
-            ...clientVisits.map(v => ({ date: v.fecha_hora, type: 'Visita', description: `${v.motivo}: ${v.observaciones}`, commercial: v.nombre_ejecutivo })),
-            ...clientProspects.map(p => ({ date: p.fecha_registro, type: 'Prospecto', description: `Nuevo prospecto registrado. Estado: ${p.estado}`, commercial: users.find(u=>u.cedula === p.cedula_comercial)?.nombre })),
-            ...clientClosures.map(c => ({ date: c.fecha_cierre, type: 'Cierre', description: `Cierre de ${c.tipo_cierre} por valor de $${c.valor.toLocaleString('es-CO')}`, commercial: users.find(u=>u.cedula === c.cedula_comercial)?.nombre })),
-        ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  // Obtener datos del cliente seleccionado
+  const clientData = useMemo(() => {
+    if (!selectedClientNit) return null;
 
-        return {
-            info: clients.find(c => c.nit === selectedNit),
-            visits: clientVisits,
-            prospects: clientProspects,
-            closures: clientClosures,
-            commercials: assignedCommercials.join(', ') || 'No asignado',
-            timeline,
-        };
+    const clientInfo = clients.find(c => c.nit === selectedClientNit);
+    if (!clientInfo) return null;
 
-    }, [selectedNit, clients, visits, prospects, closures, user]);
-    
-    const representativeClientData = useMemo(() => {
-        if (!clientData || !clientData.info) return null;
+    // --- LÓGICA DE FECHAS SEGURA ---
+    const start = dateRange.start ? new Date(`${dateRange.start}T00:00:00`) : new Date(0);
+    const end = dateRange.end ? new Date(`${dateRange.end}T23:59:59`) : new Date();
 
-        const allInteractions: (Visit | Prospect | Closure)[] = [
-            ...clientData.visits,
-            ...clientData.prospects,
-            ...clientData.closures
-        ].sort((a, b) => {
-            const dateA = 'fecha_hora' in a ? a.fecha_hora : 'fecha_registro' in a ? a.fecha_registro : a.fecha_cierre;
-            const dateB = 'fecha_hora' in b ? b.fecha_hora : 'fecha_registro' in b ? b.fecha_registro : b.fecha_cierre;
-            return new Date(dateB).getTime() - new Date(dateA).getTime();
-        });
-
-        const latestRecord = allInteractions[0];
-        
-        return {
-            nombre: clientData.info.name,
-            nit: clientData.info.nit,
-            direccion: latestRecord?.direccion || '',
-            contacto: latestRecord?.contacto || '',
-            telefono: latestRecord?.telefono || '',
-            correo: latestRecord?.correo || '',
-        };
-    }, [clientData]);
-
-    const engagementScore = useMemo(() => {
-        if (!clientData) return 0;
-        let score = 0;
-        const oneYearAgo = new Date();
-        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-        clientData.closures.forEach(c => {
-            if (new Date(c.fecha_cierre) > oneYearAgo) score += 40;
-        });
-        clientData.prospects.forEach(p => {
-            if (new Date(p.fecha_registro) > oneYearAgo) score += 10;
-        });
-        clientData.visits.forEach(v => {
-            if (new Date(v.fecha_hora) > oneYearAgo) score += 5;
-        });
-
-        if (clientData.timeline.length > 0) {
-            const lastActivityDate = new Date(clientData.timeline[0].date);
-            const daysSinceLastActivity = (new Date().getTime() - lastActivityDate.getTime()) / (1000 * 3600 * 24);
-            if (daysSinceLastActivity <= 30) score += 20;
-            else if (daysSinceLastActivity <= 90) score += 10;
-        }
-        
-        return Math.min(100, Math.round(score));
-    }, [clientData]);
-    
-    const handleSaveClient = (updatedData: any) => {
-        if (selectedNit) {
-            onUpdateClient(selectedNit, updatedData);
-        }
-        setEditModalOpen(false);
+    const filterByDate = (item: any) => {
+      const itemDateStr = item.fecha_hora || item.fecha_registro || item.fecha_cierre;
+      if (!itemDateStr) return false;
+      const itemDate = new Date(itemDateStr);
+      return itemDate >= start && itemDate <= end;
     };
-    
-    // Client Detail View
-    if (clientData) {
-        return (
-            <div className="space-y-6">
-                <button onClick={() => setSelectedNit('')} className="flex items-center space-x-2 text-gle-gray hover:text-gle-red font-semibold transition-colors">
-                    <i className="fas fa-arrow-left"></i>
-                    <span>Volver al Directorio de Clientes</span>
-                </button>
-                 <div className="bg-white p-6 rounded-lg shadow-lg border-l-8 border-gle-red">
-                      <div className="flex justify-between items-start">
-                        <div>
-                            <h3 className="text-3xl font-bold text-gle-gray-dark mb-1">{clientData.info?.name}</h3>
-                            <p className="text-md text-gray-500">NIT: {clientData.info?.nit}</p>
-                            <p className="text-md text-gray-500 mt-2"><i className="fas fa-user-tie mr-2"></i>Ejecutivo(s): {clientData.commercials}</p>
-                        </div>
-                        {user.cargo === Role.ADMIN && (
-                            <button 
-                                onClick={() => setEditModalOpen(true)}
-                                className="bg-gle-blue text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition duration-300 flex items-center space-x-2"
-                            >
-                                <i className="fas fa-pencil-alt"></i>
-                                <span>Editar Cliente</span>
-                            </button>
-                        )}
-                      </div>
-                 </div>
 
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                       <KpiCard title="Total Visitas" value={clientData.visits.length} icon="fa-route" color="gle-blue" />
-                       <KpiCard title="Total Prospectos" value={clientData.prospects.length} icon="fa-user-plus" color="gle-red" />
-                       <KpiCard title="Total Cierres" value={clientData.closures.length} icon="fa-handshake" color="gle-gray" />
-                       <KpiCard title="Último Contacto" value={clientData.timeline.length > 0 ? new Date(clientData.timeline[0].date).toLocaleDateString('es-CO') : 'N/A'} icon="fa-calendar-alt" color="gle-blue" />
-                    </div>
-                     <div className="bg-white p-4 rounded-lg shadow-md flex flex-col items-center justify-center">
-                         <h3 className="text-gray-500 font-medium mb-2 text-center">Nivel de Engagement</h3>
-                         <ResponsiveContainer width="100%" height={150}>
-                            <RadialBarChart 
-                                innerRadius="70%" 
-                                outerRadius="95%" 
-                                data={[{ name: 'Engagement', value: engagementScore }]} 
-                                startAngle={180} 
-                                endAngle={-180}
-                                barSize={25}
-                            >
-                                <PolarAngleAxis type="number" domain={[0, 100]} angleAxisId={0} tick={false} />
-                                <RadialBar background dataKey="value" cornerRadius={12} fill="#c00000" />
-                                <text x="50%" y="55%" textAnchor="middle" dominantBaseline="middle" className="text-4xl font-bold fill-current text-gle-gray-dark">
-                                    {engagementScore}
-                                </text>
-                                 <text x="50%" y="75%" textAnchor="middle" dominantBaseline="middle" className="text-sm font-semibold fill-current text-gray-500">
-                                    / 100
-                                </text>
-                            </RadialBarChart>
-                        </ResponsiveContainer>
-                        <p className="text-xs text-gray-500 text-center mt-2">Puntaje basado en actividad reciente.</p>
-                    </div>
-                 </div>
-                 
-                 <div className="bg-white p-6 rounded-lg shadow-md">
-                     <h3 className="text-xl font-semibold mb-6">Cadena de Trazabilidad Histórica</h3>
-                     <div className="relative overflow-y-auto max-h-96 pr-4 border-l-4 border-gle-gray-light ml-6">
-                        {clientData.timeline.length > 0 ? clientData.timeline.map((item, index) => {
-                            const { icon, color } = getIconForType(item.type);
-                            return (
-                             <div key={index} className="pl-10 mb-8 relative">
-                                 <div className={`absolute -left-8 top-0 w-12 h-12 rounded-full bg-${color} text-white flex items-center justify-center shadow-lg`}>
-                                     <i className={`fas ${icon} text-xl`}></i>
-                                 </div>
-                                 <p className={`font-bold text-lg text-gray-800`}>{item.type} <span className="text-gray-500 font-normal text-sm">- {new Date(item.date).toLocaleString('es-CO')}</span></p>
-                                 <p className="text-gray-700 mt-1">{item.description}</p>
-                                 <p className="text-xs text-gray-500 mt-2 italic">Atendido por: {item.commercial}</p>
-                             </div>
-                            )
-                        }) : (
-                             <div className="pl-8 text-center text-gray-500">No hay actividades registradas para este cliente.</div>
-                        )}
-                     </div>
-                 </div>
-                 {isEditModalOpen && representativeClientData && (
-                    <ClientEditModal
-                        clientData={representativeClientData}
-                        onClose={() => setEditModalOpen(false)}
-                        onSave={handleSaveClient}
-                    />
-                 )}
-             </div>
-        )
+    // Filtramos por NIT del cliente Y por fecha
+    const clientVisits = visits.filter(v => v.nit === selectedClientNit && filterByDate(v));
+    const clientProspects = prospects.filter(p => p.nit === selectedClientNit && filterByDate(p));
+    const clientClosures = closures.filter(c => c.nit === selectedClientNit && filterByDate(c));
+
+    // Cálculo seguro del valor total
+    const totalValue = clientClosures.reduce((sum, c) => {
+        const val = (c as any).valor_estimado ?? (c as any).valor ?? 0;
+        return sum + (Number(val) || 0);
+    }, 0);
+
+    // --- CÁLCULO DE ÚLTIMO CONTACTO ---
+    // Buscamos la fecha más reciente entre todas las interacciones filtradas
+    let lastContactDate: Date | null = null;
+    const allInteractions = [...clientVisits, ...clientProspects, ...clientClosures];
+    
+    if (allInteractions.length > 0) {
+        // Obtenemos la fecha más grande
+        const maxDateStr = allInteractions.reduce((max, item) => {
+            const currentStr = 'fecha_hora' in item ? item.fecha_hora : 'fecha_registro' in item ? item.fecha_registro : (item as any).fecha_cierre;
+            if (!currentStr) return max;
+            return currentStr > max ? currentStr : max;
+        }, '');
+        
+        if (maxDateStr) lastContactDate = new Date(maxDateStr);
     }
 
-    // Client Directory View
-    return (
-        <div className="space-y-6">
-            <h2 className="text-3xl font-bold text-gray-800">Directorio de Clientes</h2>
-            <div className="bg-white p-4 rounded-lg shadow-md">
-                <label htmlFor="client-search" className="sr-only">Buscar Cliente</label>
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                         <i className="fas fa-search text-gray-400"></i>
-                    </div>
-                    <input 
-                        type="text" 
-                        id="client-search"
-                        placeholder={`Buscar entre ${clients.length} clientes por NIT o Nombre...`}
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        className="block w-full p-3 pl-10 border border-gray-300 rounded-md shadow-sm text-lg"
-                    />
-                </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredClients.length > 0 ? filteredClients.map(c => (
-                    <ClientCard key={c.nit} client={c} onClick={() => setSelectedNit(c.nit)} />
-                )) : (
-                    <div className="md:col-span-2 lg:col-span-3 text-center py-10">
-                        <i className="fas fa-exclamation-circle text-4xl text-gray-400 mb-4"></i>
-                        <p className="text-lg text-gray-600">No se encontraron clientes con ese criterio de búsqueda.</p>
-                    </div>
-                )}
-            </div>
+    return {
+      name: clientInfo.name,
+      nit: clientInfo.nit,
+      visits: clientVisits,
+      prospects: clientProspects,
+      closures: clientClosures,
+      totalValue,
+      lastContact: lastContactDate ? lastContactDate.toLocaleDateString('es-CO') : 'Sin actividad reciente'
+    };
+  }, [selectedClientNit, clients, visits, prospects, closures, dateRange]);
+
+  return (
+    <div className="flex flex-col h-full space-y-6">
+      <h2 className="text-3xl font-bold text-gray-800">Información de Clientes</h2>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+        {/* Panel Izquierdo: Lista de Clientes */}
+        <div className="bg-white p-4 rounded-lg shadow-md lg:col-span-1 flex flex-col h-[600px]">
+          <div className="mb-4">
+             <label className="block text-sm font-medium text-gray-700 mb-1">Buscar Cliente</label>
+             <div className="relative">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <i className="fas fa-search text-gray-400"></i>
+                </span>
+                <input
+                  type="text"
+                  className="block w-full pl-10 p-2 border border-gray-300 rounded-md"
+                  placeholder="Nombre o NIT..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+             </div>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+             {filteredClients.length > 0 ? (
+               filteredClients.map(client => (
+                 <button
+                   key={client.nit}
+                   onClick={() => setSelectedClientNit(client.nit)}
+                   className={`w-full text-left p-3 rounded-md transition duration-150 flex justify-between items-center ${
+                     selectedClientNit === client.nit 
+                       ? 'bg-gle-red text-white shadow-md' 
+                       : 'hover:bg-gray-100 text-gray-700'
+                   }`}
+                 >
+                   <div>
+                     <p className="font-bold truncate">{client.name}</p>
+                     <p className={`text-xs ${selectedClientNit === client.nit ? 'text-red-100' : 'text-gray-500'}`}>NIT: {client.nit}</p>
+                   </div>
+                   <i className="fas fa-chevron-right opacity-50"></i>
+                 </button>
+               ))
+             ) : (
+               <p className="text-center text-gray-500 py-4">No se encontraron clientes.</p>
+             )}
+          </div>
         </div>
-    );
+
+        {/* Panel Derecho: Detalles del Cliente */}
+        <div className="lg:col-span-2 space-y-6">
+          {clientData ? (
+            <>
+              {/* Filtros de Fecha para el detalle */}
+              <div className="bg-white p-4 shadow-md grid grid-cols-2 gap-4 rounded-lg">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Desde</label>
+                  <input 
+                    type="date" 
+                    value={dateRange.start} 
+                    onChange={e => setDateRange(prev => ({...prev, start: e.target.value}))} 
+                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Hasta</label>
+                  <input 
+                    type="date" 
+                    value={dateRange.end} 
+                    onChange={e => setDateRange(prev => ({...prev, end: e.target.value}))} 
+                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" 
+                  />
+                </div>
+              </div>
+
+              {/* KPIs del Cliente */}
+              <div className="bg-white p-6 rounded-lg shadow-md">
+                 <div className="flex justify-between items-start mb-6">
+                    <div>
+                        <h3 className="text-2xl font-bold text-gle-gray-dark">{clientData.name}</h3>
+                        <p className="text-gray-500">NIT: {clientData.nit}</p>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-sm text-gray-500">Valor Total (Periodo)</p>
+                        <p className="text-2xl font-bold text-green-600">${clientData.totalValue.toLocaleString('es-CO')}</p>
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <KpiCard 
+                      title="Total Visitas" 
+                      value={clientData.visits.length} 
+                      icon="fa-route" // Icono restaurado
+                      color="gle-blue" 
+                    />
+                    <KpiCard 
+                      title="Total Prospectos" 
+                      value={clientData.prospects.length} 
+                      icon="fa-user-plus" // Icono restaurado
+                      color="gle-gray" 
+                    />
+                    <KpiCard 
+                      title="Total Cierres" 
+                      value={clientData.closures.length} 
+                      icon="fa-handshake" // Icono mantenido
+                      color="gle-red" 
+                    />
+                     <KpiCard 
+                      title="Último Contacto" 
+                      value={clientData.lastContact} 
+                      icon="fa-history" 
+                      color="gle-gray" 
+                    />
+                 </div>
+              </div>
+
+              {/* Tablas de Detalle */}
+              <div className="space-y-6">
+                  {clientData.visits.length > 0 && (
+                      <DataTable 
+                        title="Historial de Visitas" 
+                        data={clientData.visits} 
+                        columns={[
+                            { key: 'fecha_hora', name: 'Fecha', render: (i: Visit) => formatDate(i.fecha_hora) },
+                            { key: 'motivo', name: 'Motivo', render: (i: Visit) => i.motivo },
+                            { key: 'nombre_ejecutivo', name: 'Ejecutivo', render: (i: Visit) => i.nombre_ejecutivo || 'N/A' },
+                            { key: 'observaciones', name: 'Observaciones', render: (i: Visit) => i.observaciones || '-' }
+                        ]}
+                      />
+                  )}
+
+                  {clientData.closures.length > 0 && (
+                      <DataTable 
+                        title="Historial de Cierres" 
+                        data={clientData.closures} 
+                        columns={[
+                            { key: 'fecha_cierre', name: 'Fecha', render: (i: Closure) => formatDate(i.fecha_cierre) },
+                            { key: 'tipo_cierre', name: 'Tipo', render: (i: Closure) => i.tipo_cierre },
+                            { 
+                                key: 'valor_estimado', 
+                                name: 'Valor', 
+                                render: (i: Closure) => `$${(Number((i as any).valor_estimado ?? i.valor ?? 0)).toLocaleString('es-CO')}` 
+                            },
+                        ]}
+                      />
+                  )}
+                  
+                  {clientData.visits.length === 0 && clientData.closures.length === 0 && (
+                      <div className="text-center py-10 bg-white rounded-lg shadow border border-dashed border-gray-300">
+                          <p className="text-gray-500">No hay actividad registrada para este cliente en el rango de fechas seleccionado.</p>
+                      </div>
+                  )}
+              </div>
+            </>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center bg-white rounded-lg shadow-md p-10 text-center">
+               <i className="fas fa-user-friends text-6xl text-gray-200 mb-4"></i>
+               <h3 className="text-xl font-semibold text-gray-700">Seleccione un cliente</h3>
+               <p className="text-gray-500">Haga clic en un cliente de la lista para ver su historial detallado.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default ClientAnalysis;

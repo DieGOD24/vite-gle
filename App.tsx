@@ -152,8 +152,7 @@ const App: React.FC = () => {
       </div>
     );
   }
-
-  return (
+    return (
     <div className="min-h-screen bg-gle-gray-light font-sans">
       <Dashboard 
         user={currentUser} 

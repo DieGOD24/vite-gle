@@ -4,7 +4,7 @@ import KpiCard from './ui/KpiCard';
 import DataTable from './ui/DataTable';
 import MapModal from './ui/MapModal';
 
-// --- Interfaces de TypeScript (ajustadas para ser flexibles) ---
+// --- Interfaces ---
 interface CommercialAnalysisProps {
   commercialUsers: User[];
   visits: Visit[];
@@ -16,7 +16,8 @@ interface CommercialAnalysisProps {
 // --- Utilidades ---
 const formatDate = (date: string | Date | null | undefined): string => {
   if (!date) return 'N/A';
-  return new Date(date).toLocaleDateString('es-CO');
+  const d = new Date(date);
+  return d.toLocaleDateString('es-CO');
 };
 
 const formatDuration = (totalMinutes: number | null | undefined): string => {
@@ -34,23 +35,25 @@ const SemaforoCell: React.FC<{ motivo: VisitType; prospect?: Prospect | null }> 
   motivo,
   prospect,
 }) => {
-  if (motivo !== VisitType.PROSPECTO || !prospect?.fecha_posible_cierre) {
+  const fechaCierre = prospect ? (prospect as any).fecha_posible_cierre : null;
+
+  if (motivo !== VisitType.PROSPECTO || !fechaCierre) {
     return (
-      <div
-        className="flex items-center space-x-2"
-        title="No es un prospecto nuevo o no tiene fecha asignada"
-      >
+      <div className="flex items-center space-x-2" title="No es un prospecto nuevo o no tiene fecha asignada">
         <span className="h-3 w-3 rounded-full bg-white border border-gray-300"></span>
         <span>N/A</span>
       </div>
     );
   }
+  
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const closingDate = new Date(prospect.fecha_posible_cierre);
+  const closingDate = new Date(fechaCierre);
   closingDate.setHours(0, 0, 0, 0);
+  
   const diffTime = closingDate.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
   let color = '';
   let tooltip = '';
 
@@ -71,7 +74,7 @@ const SemaforoCell: React.FC<{ motivo: VisitType; prospect?: Prospect | null }> 
   return (
     <div className="flex items-center space-x-2" title={tooltip}>
       <span className={`h-3 w-3 rounded-full ${color}`}></span>
-      <span>{formatDate(prospect.fecha_posible_cierre)}</span>
+      <span>{formatDate(fechaCierre)}</span>
     </div>
   );
 };
@@ -89,13 +92,13 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
   lastMonth.setMonth(today.getMonth() - 1);
 
   const [selectedCommercialId, setSelectedCommercialId] = useState<string>('');
-  const [activeSubTab, setActiveSubTab] = useState<'visitas' | 'prospectos' | 'cierres'>(
-    'visitas'
-  );
+  const [activeSubTab, setActiveSubTab] = useState<'visitas' | 'prospectos' | 'cierres'>('visitas');
+  
   const [dateRange, setDateRange] = useState({
     start: lastMonth.toISOString().split('T')[0],
     end: today.toISOString().split('T')[0],
   });
+  
   const [isMapModalOpen, setMapModalOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<{
     lat: number;
@@ -105,23 +108,17 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
     type?: 'visit' | 'prospect' | 'closure';
   } | null>(null);
 
-  // --- Datos memoizados y filtrados ---
+  // --- Datos memoizados ---
   const selectedCommercialData = useMemo(() => {
     if (!selectedCommercialId) return null;
 
-    const start = dateRange.start ? new Date(dateRange.start) : new Date(0);
-    const end = dateRange.end ? new Date(dateRange.end) : new Date();
-    end.setHours(23, 59, 59, 999);
+    const start = dateRange.start ? new Date(`${dateRange.start}T00:00:00`) : new Date(0);
+    const end = dateRange.end ? new Date(`${dateRange.end}T23:59:59`) : new Date();
 
-    const filterByDate = (item: {
-      fecha_hora?: string | Date | null;
-      fecha_registro?: string | Date | null;
-      fecha_cierre?: string | Date | null;
-    }) => {
-      if (!item.fecha_hora && !item.fecha_registro && !item.fecha_cierre) return false;
-      const itemDate = item.fecha_hora || item.fecha_registro || item.fecha_cierre;
-      if (!itemDate) return false;
-      const dateToCheck = new Date(itemDate);
+    const filterByDate = (item: any) => {
+      const itemDateStr = item.fecha_hora || item.fecha_registro || item.fecha_cierre;
+      if (!itemDateStr) return false;
+      const dateToCheck = new Date(itemDateStr);
       return dateToCheck >= start && dateToCheck <= end;
     };
 
@@ -147,12 +144,13 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
 
     const latestProspectsByNit = new Map<string, Prospect>();
     [...prospects]
-      .sort(
-        (a, b) =>
-          new Date(b.fecha_registro).getTime() - new Date(a.fecha_registro).getTime()
-      )
+      .sort((a, b) => {
+         const tA = a.fecha_registro ? new Date(a.fecha_registro).getTime() : 0;
+         const tB = b.fecha_registro ? new Date(b.fecha_registro).getTime() : 0;
+         return tB - tA;
+      })
       .forEach((p) => {
-        if (!latestProspectsByNit.has(p.nit)) {
+        if (p.nit && !latestProspectsByNit.has(p.nit)) {
           latestProspectsByNit.set(p.nit, p);
         }
       });
@@ -168,23 +166,22 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
     };
   }, [selectedCommercialId, commercialUsers, visits, prospects, closures, dateRange]);
 
-  // --- Helper para obtener lat/lon de forma robusta ---
-  const getLatLonFromItem = (item: any): { lat?: number; lon?: number; address?: string } => {
-    const latRaw =
-      item.latitud ??
-      item.latitude ??
-      item.lat ??
-      item.lat_cliente ??
-      item.latitud_cliente;
-    const lonRaw =
-      item.longitud ??
-      item.longitude ??
-      item.lng ??
-      item.lon ??
-      item.long_cliente ??
-      item.longitud_cliente;
+  // --- Helper INTELIGENTE para lat/lon ---
+  const getLatLonFromItem = (item: any, type: 'visit' | 'prospect' | 'closure'): { lat?: number; lon?: number; address?: string } => {
+    let latRaw = item.lat ?? item.latitud ?? item.latitude;
+    let lonRaw = item.lng ?? item.longitud ?? item.longitude;
+    const address = item.direccion;
 
-    const address = item.direccion || item.direccion_cliente || item.address;
+    // --- TRUCO: Si no tiene coordenadas y es Cierre/Prospecto, buscamos en las visitas ---
+    if ((latRaw == null || lonRaw == null) && type !== 'visit' && item.nit) {
+       // Buscamos una visita del mismo cliente (NIT) que SÍ tenga coordenadas
+       const matchingVisit = visits.find(v => v.nit === item.nit && v.lat && v.lng);
+       if (matchingVisit) {
+           latRaw = matchingVisit.lat;
+           lonRaw = matchingVisit.lng;
+       }
+    }
+    // ------------------------------------------------------------------------------------
 
     if (latRaw == null || lonRaw == null) {
       return { lat: undefined, lon: undefined, address };
@@ -193,14 +190,13 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
     const lat = Number(latRaw);
     const lon = Number(lonRaw);
 
-    if (Number.isNaN(lat) || Number.isNaN(lon)) {
+    if (Number.isNaN(lat) || Number.isNaN(lon) || (lat === 0 && lon === 0)) {
       return { lat: undefined, lon: undefined, address };
     }
-
     return { lat, lon, address };
   };
 
-  // --- Renderizado de pestañas ---
+  // --- Renderizado de Pestañas ---
   const renderSubTabContent = () => {
     if (!selectedCommercialData) return null;
 
@@ -210,15 +206,14 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
       item: Visit | Prospect | Closure,
       type: 'visit' | 'prospect' | 'closure'
     ) => {
-      const { lat, lon, address } = getLatLonFromItem(item);
-
+      const { lat, lon, address } = getLatLonFromItem(item, type);
       if (lat == null || lon == null) return;
 
       setSelectedLocation({
         lat,
         lon,
         clientAddress: address || 'Sin dirección',
-        id: type === 'visit' ? (item as Visit).id : undefined,
+        id: type === 'visit' ? (item as Visit).id_visita : undefined,
         type,
       });
       setMapModalOpen(true);
@@ -228,20 +223,10 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
       item: Visit | Prospect | Closure,
       type: 'visit' | 'prospect' | 'closure'
     ) => {
-      // Si es visita y ya está validada, mostramos "Validado"
-      if (type === 'visit' && (item as Visit).ubicacion_validada) {
-        return (
-          <div className="flex items-center justify-center space-x-1 text-green-600 text-sm font-semibold">
-            <i className="fas fa-check-circle"></i>
-            <span>Validado</span>
-          </div>
-        );
-      }
-
-      const { lat, lon } = getLatLonFromItem(item);
-
+      const { lat, lon } = getLatLonFromItem(item, type);
+      
       if (lat == null || lon == null) {
-        return <span className="text-gray-400 text-xs">N/A</span>;
+        return <span className="text-gray-400 text-xs" title="Sin ubicación">N/A</span>;
       }
 
       return (
@@ -251,10 +236,9 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
             openLocationModal(item, type);
           }}
           className="text-gle-blue hover:text-blue-700 text-xl flex items-center justify-center w-8 h-8 rounded-full hover:bg-blue-50 transition"
-          title={type === 'visit' ? 'Ver en mapa y validar' : 'Ver en mapa'}
-          aria-label={type === 'visit' ? 'Ver en mapa y validar' : 'Ver en mapa'}
+          title={type === 'visit' ? 'Ver ubicación exacta' : 'Ver ubicación (basada en visitas)'}
         >
-          <i className="fas fa-map"></i>
+          <i className="fas fa-map-marker-alt"></i>
         </button>
       );
     };
@@ -266,44 +250,25 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
             title="Matriz de Visitas"
             data={visits}
             columns={[
-              {
-                key: 'fecha_hora',
-                name: 'Fecha',
-                render: (item: Visit) => formatDate(item.fecha_hora),
-              },
-              {
-                key: 'cliente',
-                name: 'Cliente',
-                render: (item: Visit) =>
-                  item.nombre_cliente || item.cliente || 'N/A',
-              },
-              {
-                key: 'motivo',
-                name: 'Motivo',
-                render: (item: Visit) => item.motivo || 'N/A',
-              },
+              { key: 'fecha_hora', name: 'Fecha', render: (item: Visit) => formatDate(item.fecha_hora) },
+              { key: 'nombre_cliente', name: 'Cliente', render: (item: Visit) => item.nombre_cliente || 'N/A' },
+              { key: 'motivo', name: 'Motivo', render: (item: Visit) => item.motivo || 'N/A' },
               {
                 key: 'semaforo',
                 name: 'Semáforo Cierre',
-                render: (item: Visit) => (
-                  <SemaforoCell
-                    motivo={item.motivo}
-                    prospect={
-                      item.nit ? latestProspectsByNit.get(item.nit) : undefined
-                    }
-                  />
-                ),
+                render: (item: Visit) => <SemaforoCell motivo={item.motivo} prospect={item.nit ? latestProspectsByNit.get(item.nit) : null} />
+              },
+              { 
+                  key: 'duracion', 
+                  name: 'Duración', 
+                  render: (item: Visit) => formatDuration(item.duracion_minutos) 
               },
               {
                 key: 'verificar_ubicacion',
                 name: 'Mapa',
                 render: (item: Visit) => renderMapIconCell(item, 'visit'),
               },
-              {
-                key: 'observaciones',
-                name: 'Observaciones',
-                render: (item: Visit) => item.observaciones || 'N/A',
-              },
+              { key: 'observaciones', name: 'Observaciones', render: (item: Visit) => item.observaciones || 'N/A' },
             ]}
             emptyMessage="No hay visitas en el rango de fechas seleccionado."
           />
@@ -315,32 +280,14 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
             title="Matriz de Prospectos"
             data={prospects}
             columns={[
-              {
-                key: 'fecha_registro',
-                name: 'Fecha Registro',
-                render: (item: Prospect) => formatDate(item.fecha_registro),
-              },
-              {
-                key: 'nombre_empresa',
-                name: 'Empresa',
-                render: (item: Prospect) => item.nombre_empresa || 'N/A',
-              },
-              {
-                key: 'contacto',
-                name: 'Contacto',
-                render: (item: Prospect) => item.contacto || 'N/A',
-              },
-              {
-                key: 'estado',
-                name: 'Estado',
-                render: (item: Prospect) => item.estado || 'N/A',
-              },
+              { key: 'fecha_registro', name: 'Fecha Registro', render: (item: Prospect) => formatDate(item.fecha_registro) },
+              { key: 'nombre_empresa', name: 'Empresa', render: (item: Prospect) => item.nombre_empresa || 'N/A' },
+              { key: 'contacto', name: 'Contacto', render: (item: Prospect) => item.contacto || 'N/A' },
+              { key: 'estado', name: 'Estado', render: (item: Prospect) => item.estado || 'N/A' },
               {
                 key: 'fecha_posible_cierre',
                 name: 'Semáforo Cierre',
-                render: (item: Prospect) => (
-                  <SemaforoCell motivo={VisitType.PROSPECTO} prospect={item} />
-                ),
+                render: (item: Prospect) => <SemaforoCell motivo={VisitType.PROSPECTO} prospect={item} />
               },
               {
                 key: 'verificar_ubicacion',
@@ -358,28 +305,20 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
             title="Matriz de Cierres"
             data={closures}
             columns={[
+              { key: 'fecha_cierre', name: 'Fecha', render: (item: Closure) => formatDate(item.fecha_cierre) },
+              { key: 'cliente', name: 'Cliente', render: (item: Closure) => item.cliente || 'N/A' },
+              { key: 'tipo_cierre', name: 'Tipo', render: (item: Closure) => item.tipo_cierre || 'N/A' },
               {
-                key: 'fecha_cierre',
-                name: 'Fecha',
-                render: (item: Closure) => formatDate(item.fecha_cierre),
-              },
-              {
-                key: 'cliente',
-                name: 'Cliente',
-                render: (item: Closure) => item.cliente || 'N/A',
-              },
-              {
-                key: 'tipo_cierre',
-                name: 'Tipo',
-                render: (item: Closure) => item.tipo_cierre || 'N/A',
-              },
-              {
-                key: 'valor',
+                key: 'valor_estimado', 
                 name: 'Valor',
-                render: (item: Closure) =>
-                  item.valor
-                    ? `$${item.valor.toLocaleString('es-CO')}`
-                    : 'N/A',
+                render: (item: Closure) => {
+                  const i = item as any;
+                  const val = i.valor_estimado ?? i.valor;
+                  if (val !== undefined && val !== null) {
+                    return `$${Number(val).toLocaleString('es-CO')}`;
+                  }
+                  return 'N/A';
+                }
               },
               {
                 key: 'verificar_ubicacion',
@@ -403,10 +342,7 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
       </h2>
 
       <div className="bg-white p-4 rounded-lg shadow-md">
-        <label
-          htmlFor="commercial-select"
-          className="block text-lg font-medium text-gray-800"
-        >
+        <label htmlFor="commercial-select" className="block text-lg font-medium text-gray-800">
           Seleccionar Ejecutivo
         </label>
         <select
@@ -414,7 +350,6 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
           value={selectedCommercialId}
           onChange={(e) => setSelectedCommercialId(e.target.value)}
           className="mt-2 block w-full p-3 border border-gray-300 rounded-md shadow-sm text-lg"
-          aria-label="Seleccionar ejecutivo comercial"
         >
           <option value="">-- Busque un ejecutivo por nombre --</option>
           {commercialUsers.map((u) => (
@@ -429,31 +364,21 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
         <>
           <div className="bg-white p-4 shadow-md grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Fecha Inicio
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Fecha Inicio</label>
               <input
                 type="date"
                 value={dateRange.start}
-                onChange={(e) =>
-                  setDateRange((prev) => ({ ...prev, start: e.target.value }))
-                }
+                onChange={(e) => setDateRange((prev) => ({ ...prev, start: e.target.value }))}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
-                aria-label="Fecha inicio"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Fecha Fin
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Fecha Fin</label>
               <input
                 type="date"
                 value={dateRange.end}
-                onChange={(e) =>
-                  setDateRange((prev) => ({ ...prev, end: e.target.value }))
-                }
+                onChange={(e) => setDateRange((prev) => ({ ...prev, end: e.target.value }))}
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
-                aria-label="Fecha fin"
               />
             </div>
           </div>
@@ -463,8 +388,7 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
               {selectedCommercialData.info?.nombre}
             </h3>
             <p className="text-md text-gray-600">
-              {selectedCommercialData.info?.cargo} -{' '}
-              {selectedCommercialData.info?.regional}
+              {selectedCommercialData.info?.cargo} - {selectedCommercialData.info?.regional}
             </p>
           </div>
 
@@ -500,37 +424,27 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
               color="gle-red"
             />
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-1">
               <div className="bg-white p-4 rounded-lg shadow-md">
-                <h4 className="text-md font-semibold text-gle-gray-dark mb-3">
-                  Leyenda del Semáforo de Cierre
-                </h4>
+                <h4 className="text-md font-semibold text-gle-gray-dark mb-3">Leyenda del Semáforo de Cierre</h4>
                 <div className="space-y-2">
                   <div className="flex items-center space-x-2">
                     <span className="h-3 w-3 rounded-full bg-yellow-400"></span>
-                    <span className="text-sm text-gray-600">
-                      Corto Plazo (&lt;= 1 mes)
-                    </span>
+                    <span className="text-sm text-gray-600">Corto Plazo (&lt;= 1 mes)</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="h-3 w-3 rounded-full bg-orange-400"></span>
-                    <span className="text-sm text-gray-600">
-                      Mediano Plazo (&lt;= 2 meses)
-                    </span>
+                    <span className="text-sm text-gray-600">Mediano Plazo (&lt;= 2 meses)</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="h-3 w-3 rounded-full bg-red-500"></span>
-                    <span className="text-sm text-gray-600">
-                      Largo Plazo (&gt; 2 meses)
-                    </span>
+                    <span className="text-sm text-gray-600">Largo Plazo (&gt; 2 meses)</span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="h-3 w-3 rounded-full bg-white border border-gray-300"></span>
-                    <span className="text-sm text-gray-600">
-                      No Aplica / Sin Fecha
-                    </span>
+                    <span className="text-sm text-gray-600">No Aplica / Sin Fecha</span>
                   </div>
                 </div>
               </div>
@@ -549,7 +463,6 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
                         ? 'border-gle-red text-gle-red'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                     }`}
-                    aria-current={activeSubTab === tab ? 'page' : undefined}
                   >
                     {tab.charAt(0).toUpperCase() + tab.slice(1)}
                   </button>

@@ -20,6 +20,7 @@ export enum VisitType {
 }
 
 export interface Visit {
+  id_visita: any;
   nombre_cliente: string;
   id: string;
   cedula_ejecutivo: string;

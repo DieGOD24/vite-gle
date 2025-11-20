@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -31,116 +32,92 @@ const MapModal: React.FC<MapModalProps> = ({
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
+    // 1. Inicializar el mapa
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [commercialLocation.lng, commercialLocation.lat],
       zoom: 15,
+      attributionControl: false,
     });
 
     mapRef.current = map;
 
+    // 2. Crear el elemento HTML personalizado para el marcador
+    // Usamos JavaScript puro para crear el ícono de la casa
+    const el = document.createElement('div');
+    el.className = 'custom-marker';
+    el.innerHTML = `
+      <div style="display: flex; flex-direction: column; align-items: center; transform: translateY(-100%);">
+        <div style="background: white; padding: 8px; border-radius: 50%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #e5e7eb;">
+          <i class="fas fa-house" style="color: #c00000; font-size: 24px;"></i>
+        </div>
+        <div style="width: 2px; height: 10px; background-color: #c00000;"></div>
+        <div style="width: 8px; height: 4px; background-color: rgba(0,0,0,0.2); border-radius: 50%;"></div>
+      </div>
+    `;
+
+    // 3. Agregar el marcador al mapa en las coordenadas exactas
+    new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([commercialLocation.lng, commercialLocation.lat])
+      .addTo(map);
+
+    // 4. Redimensionar al cargar
     map.on('load', () => {
-      // Ajusta el mapa al tamaño real del contenedor dentro del modal
-      setTimeout(() => {
-        map.resize();
-      }, 100);
+      map.resize();
     });
 
-    const handleWindowResize = () => {
-      map.resize();
-    };
-
-    window.addEventListener('resize', handleWindowResize);
-
     return () => {
-      window.removeEventListener('resize', handleWindowResize);
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
+      map.remove();
+      mapRef.current = null;
     };
-  }, [commercialLocation.lat, commercialLocation.lng]);
+  }, [commercialLocation.lng, commercialLocation.lat]); // Importante: Dependencias para actualizar si cambian las coordenadas
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Capa de fondo oscura en toda la pantalla */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/50"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Contenido del modal */}
       <div
-        className="
-          relative
-          bg-white rounded-lg shadow-xl 
-          w-full max-w-3xl 
-          max-h-[90vh] 
-          flex flex-col
-        "
+        className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex justify-between items-center mb-4 px-6 pt-6">
-          <h2 className="text-2xl font-bold text-gle-gray-dark">
-            Detalle de Ubicación de la Visita
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-800 text-2xl"
-          >
-            &times;
-          </button>
+        <div className="flex justify-between items-center p-5 border-b border-gray-100 bg-gray-50">
+          <h2 className="text-xl font-bold text-gray-800">Ubicación de la Visita</h2>
+          <button onClick={onClose} className="text-gray-500 text-2xl">&times;</button>
         </div>
 
-        {/* Mapa + marcador fijo */}
-        <div className="px-6 flex-1">
-          <div className="relative w-full h-[260px] md:h-[340px] rounded-md overflow-hidden">
-            {/* Contenedor del mapa */}
-            <div ref={mapContainerRef} className="w-full h-full" />
+        {/* Contenedor del Mapa */}
+        <div className="relative w-full h-[400px] bg-gray-100">
+          {/* Ya no necesitamos el ícono flotante aquí, mapbox lo maneja dentro */}
+          <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+        </div>
 
-            {/* Marcador de casa fijo en el centro del mapa */}
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div className="pointer-events-auto flex flex-col items-center -mt-6">
-                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-lg border border-gray-200">
-                  <i className="fas fa-house text-gle-red text-xl" />
-                </div>
-                <div className="w-px h-4 bg-red-500/60" />
-              </div>
-            </div>
+        {/* Footer */}
+        <div className="p-6 bg-white space-y-4">
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+             <div>
+                <p className="text-gray-500 font-medium">Coordenadas</p>
+                <p className="font-mono text-gray-700">{commercialLocation.lat.toFixed(6)}, {commercialLocation.lng.toFixed(6)}</p>
+             </div>
+             {clientAddress && (
+               <div>
+                  <p className="text-gray-500 font-medium">Dirección</p>
+                  <p className="text-gray-800">{clientAddress}</p>
+               </div>
+             )}
           </div>
-        </div>
-
-        {/* Info debajo del mapa + botón validar */}
-        <div className="px-6 pb-6 pt-4 space-y-3">
-          <p className="text-xs text-gray-600">
-            El ícono de la{' '}
-            <i className="fas fa-house text-gle-red mx-1" />
-            indica la ubicación reportada por el comercial en el mapa.
-          </p>
-
-          <p className="text-sm text-gray-700">
-            <span className="font-semibold">Coordenadas:</span>{' '}
-            lat {commercialLocation.lat.toFixed(6)}, lng{' '}
-            {commercialLocation.lng.toFixed(6)}
-          </p>
-
-          {clientAddress && (
-            <p className="text-sm text-gray-700">
-              <span className="font-semibold">Dirección reportada:</span>{' '}
-              {clientAddress}
-            </p>
-          )}
 
           {onValidate && visitId && (
-            <div className="mt-2 flex justify-end">
+            <div className="pt-2 flex justify-end border-t border-gray-100 mt-4">
               <button
                 onClick={handleValidate}
-                className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition duration-300 flex items-center space-x-2"
+                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg shadow transition duration-200"
               >
-                <i className="fas fa-check" />
-                <span>Validar Ubicación</span>
+                Validar Ubicación
               </button>
             </div>
           )}
