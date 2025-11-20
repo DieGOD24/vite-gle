@@ -37,7 +37,7 @@ const MapModal: React.FC<MapModalProps> = ({
       container: mapContainerRef.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [commercialLocation.lng, commercialLocation.lat],
-      zoom: 15,
+      zoom: 17,
       attributionControl: false,
     });
 
@@ -48,7 +48,7 @@ const MapModal: React.FC<MapModalProps> = ({
     const el = document.createElement('div');
     el.className = 'custom-marker';
     el.innerHTML = `
-      <div style="display: flex; flex-direction: column; align-items: center; transform: translateY(-100%);">
+      <div style="display: flex; flex-direction: column; align-items: center;">
         <div style="background: white; padding: 8px; border-radius: 50%; box-shadow: 0 4px 6px rgba(0,0,0,0.3); border: 1px solid #e5e7eb;">
           <i class="fas fa-house" style="color: #c00000; font-size: 24px;"></i>
         </div>
@@ -98,29 +98,18 @@ const MapModal: React.FC<MapModalProps> = ({
 
         {/* Footer */}
         <div className="p-6 bg-white space-y-4">
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-             <div>
-                <p className="text-gray-500 font-medium">Coordenadas</p>
-                <p className="font-mono text-gray-700">{commercialLocation.lat.toFixed(6)}, {commercialLocation.lng.toFixed(6)}</p>
-             </div>
-             {clientAddress && (
-               <div>
-                  <p className="text-gray-500 font-medium">Dirección</p>
-                  <p className="text-gray-800">{clientAddress}</p>
-               </div>
-             )}
-          </div>
-
-          {onValidate && visitId && (
-            <div className="pt-2 flex justify-end border-t border-gray-100 mt-4">
-              <button
-                onClick={handleValidate}
-                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg shadow transition duration-200"
-              >
-                Validar Ubicación
-              </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-gray-500 font-medium">Coordenadas</p>
+              <p className="font-mono text-gray-700">{commercialLocation.lat.toFixed(6)}, {commercialLocation.lng.toFixed(6)}</p>
             </div>
-          )}
+            {clientAddress && (
+              <div>
+                <p className="text-gray-500 font-medium">Dirección</p>
+                <p className="text-gray-800">{clientAddress}</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
