@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { User, Role, Visit, Prospect, Closure } from '../types';
-// No necesitas la importación de mockData, ¡ya se eliminó!
 
 import KpiCard from './ui/KpiCard';
 import RegionalAnalysis from './RegionalAnalysis';
@@ -109,7 +108,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [user, selectedRegion, users]);
 
   const { filteredVisits, filteredProspects, filteredClosures, previousPeriodData } = useMemo(() => {
-    // Limpieza de nulos
     let baseVisits = visits.filter(Boolean);
     let baseProspects = prospects.filter(Boolean);
     let baseClosures = closures.filter(Boolean);
@@ -320,6 +318,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                   accept="image/*"
                   onChange={handleLogoUpload}
                 />
+                <label htmlFor="logo-upload" className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 transition duration-200 flex items-center space-x-2 cursor-pointer">
+                  <i className="fas fa-upload"></i>
+                  <span>Cambiar Logo</span>
+                </label>
               </>
             )}
             <button onClick={onLogout} className="bg-gle-red text-white px-4 py-2 rounded hover:bg-red-700 transition duration-200 flex items-center space-x-2">
@@ -328,8 +330,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             </button>
           </div>
         </header>
+
+        {/* --- ZONA DE FILTROS PARA MANAGER (Corregida) --- */}
         {isManager && ['resumen', 'analisis-ejecutivo'].includes(activeTab) && (
-          <div className="bg-white p-4 shadow-md grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+          <div className={`bg-white p-4 shadow-md grid gap-4 items-end ${activeTab === 'resumen' ? 'grid-cols-1 md:grid-cols-4' : 'grid-cols-1'}`}>
+
+            {/* 1. Filtro de Región: Visible en 'resumen' Y 'analisis-ejecutivo' */}
             <div>
               <label className="block text-sm font-medium text-gray-700">Región</label>
               <select value={selectedRegion} onChange={e => { setSelectedRegion(e.target.value); setSelectedCommercial(''); }} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" disabled={user.cargo === Role.LIDER_REGIONAL}>
@@ -337,30 +343,31 @@ const Dashboard: React.FC<DashboardProps> = ({
                 {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Ejecutivo Comercial</label>
-              <select value={selectedCommercial} onChange={e => setSelectedCommercial(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
-                <option value="">Todos los Ejecutivos</option>
-                {commercialUsersForFilter.map(u => <option key={u.cedula} value={u.cedula}>{u.nombre}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Fecha Inicio</label>
-              <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Fecha Fin</label>
-              <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
-            </div>
+
+            {/* 2. Otros Filtros: Visibles SOLO en 'resumen' */}
+            {activeTab === 'resumen' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Ejecutivo Comercial</label>
+                  <select value={selectedCommercial} onChange={e => setSelectedCommercial(e.target.value)} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm">
+                    <option value="">Todos los Ejecutivos</option>
+                    {commercialUsersForFilter.map(u => <option key={u.cedula} value={u.cedula}>{u.nombre}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Fecha Inicio</label>
+                  <input type="date" value={dateRange.start} onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Fecha Fin</label>
+                  <input type="date" value={dateRange.end} onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+                </div>
+              </>
+            )}
           </div>
         )}
 
-        {/* --- CORRECCIÓN AQUÍ ---
-           Antes decía: ['registros', 'clientes'].includes(activeTab)
-           Ahora solo: ['registros'].includes(activeTab)
-           Esto elimina el filtro duplicado en la pestaña de clientes.
-         */}
-        {isCommercial && ['registros'].includes(activeTab) && (
+        {isCommercial && activeTab === 'registros' && (
           <div className="bg-white p-4 shadow-md grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
             <div>
               <label className="block text-sm font-medium text-gray-700">Fecha Inicio</label>

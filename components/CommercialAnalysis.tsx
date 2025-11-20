@@ -45,15 +45,15 @@ const SemaforoCell: React.FC<{ motivo: VisitType; prospect?: Prospect | null }> 
       </div>
     );
   }
-  
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const closingDate = new Date(fechaCierre);
   closingDate.setHours(0, 0, 0, 0);
-  
+
   const diffTime = closingDate.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
+
   let color = '';
   let tooltip = '';
 
@@ -93,12 +93,12 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
 
   const [selectedCommercialId, setSelectedCommercialId] = useState<string>('');
   const [activeSubTab, setActiveSubTab] = useState<'visitas' | 'prospectos' | 'cierres'>('visitas');
-  
+
   const [dateRange, setDateRange] = useState({
     start: lastMonth.toISOString().split('T')[0],
     end: today.toISOString().split('T')[0],
   });
-  
+
   const [isMapModalOpen, setMapModalOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<{
     lat: number;
@@ -145,9 +145,9 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
     const latestProspectsByNit = new Map<string, Prospect>();
     [...prospects]
       .sort((a, b) => {
-         const tA = a.fecha_registro ? new Date(a.fecha_registro).getTime() : 0;
-         const tB = b.fecha_registro ? new Date(b.fecha_registro).getTime() : 0;
-         return tB - tA;
+        const tA = a.fecha_registro ? new Date(a.fecha_registro).getTime() : 0;
+        const tB = b.fecha_registro ? new Date(b.fecha_registro).getTime() : 0;
+        return tB - tA;
       })
       .forEach((p) => {
         if (p.nit && !latestProspectsByNit.has(p.nit)) {
@@ -174,12 +174,12 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
 
     // --- TRUCO: Si no tiene coordenadas y es Cierre/Prospecto, buscamos en las visitas ---
     if ((latRaw == null || lonRaw == null) && type !== 'visit' && item.nit) {
-       // Buscamos una visita del mismo cliente (NIT) que SÍ tenga coordenadas
-       const matchingVisit = visits.find(v => v.nit === item.nit && v.lat && v.lng);
-       if (matchingVisit) {
-           latRaw = matchingVisit.lat;
-           lonRaw = matchingVisit.lng;
-       }
+      // Buscamos una visita del mismo cliente (NIT) que SÍ tenga coordenadas
+      const matchingVisit = visits.find(v => v.nit === item.nit && v.lat && v.lng);
+      if (matchingVisit) {
+        latRaw = matchingVisit.lat;
+        lonRaw = matchingVisit.lng;
+      }
     }
     // ------------------------------------------------------------------------------------
 
@@ -224,7 +224,7 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
       type: 'visit' | 'prospect' | 'closure'
     ) => {
       const { lat, lon } = getLatLonFromItem(item, type);
-      
+
       if (lat == null || lon == null) {
         return <span className="text-gray-400 text-xs" title="Sin ubicación">N/A</span>;
       }
@@ -258,10 +258,10 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
                 name: 'Semáforo Cierre',
                 render: (item: Visit) => <SemaforoCell motivo={item.motivo} prospect={item.nit ? latestProspectsByNit.get(item.nit) : null} />
               },
-              { 
-                  key: 'duracion', 
-                  name: 'Duración', 
-                  render: (item: Visit) => formatDuration(item.duracion_minutos) 
+              {
+                key: 'duracion',
+                name: 'Duración',
+                render: (item: Visit) => formatDuration(item.duracion_minutos)
               },
               {
                 key: 'verificar_ubicacion',
@@ -309,7 +309,7 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
               { key: 'cliente', name: 'Cliente', render: (item: Closure) => item.cliente || 'N/A' },
               { key: 'tipo_cierre', name: 'Tipo', render: (item: Closure) => item.tipo_cierre || 'N/A' },
               {
-                key: 'valor_estimado', 
+                key: 'valor_estimado',
                 name: 'Valor',
                 render: (item: Closure) => {
                   const i = item as any;
@@ -424,8 +424,8 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
               color="gle-red"
             />
           </div>
-          
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-1">
               <div className="bg-white p-4 rounded-lg shadow-md">
                 <h4 className="text-md font-semibold text-gle-gray-dark mb-3">Leyenda del Semáforo de Cierre</h4>
@@ -458,11 +458,10 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
                   <button
                     key={tab}
                     onClick={() => setActiveSubTab(tab)}
-                    className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                      activeSubTab === tab
+                    className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeSubTab === tab
                         ? 'border-gle-red text-gle-red'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
+                      }`}
                   >
                     {tab.charAt(0).toUpperCase() + tab.slice(1)}
                   </button>
