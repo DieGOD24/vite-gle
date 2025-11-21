@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { User, Visit, Prospect, Closure, VisitType } from '../types';
+import { User, Visit, Prospect, Closure } from '../types';
 import KpiCard from './ui/KpiCard';
 import DataTable from './ui/DataTable';
 import MapModal from './ui/MapModal';
@@ -17,6 +17,7 @@ interface CommercialAnalysisProps {
 const formatDate = (date: string | Date | null | undefined): string => {
   if (!date) return 'N/A';
   const d = new Date(date);
+  if (isNaN(d.getTime())) return 'N/A';
   return d.toLocaleDateString('es-CO');
 };
 
@@ -30,16 +31,14 @@ const formatDuration = (totalMinutes: number | null | undefined): string => {
   return result.trim();
 };
 
-// --- Semáforo ---
-const SemaforoCell: React.FC<{ motivo: VisitType; prospect?: Prospect | null }> = ({
-  motivo,
-  prospect,
-}) => {
-  const fechaCierre = prospect ? (prospect as any).fecha_posible_cierre : null;
-
-  if (motivo !== VisitType.PROSPECTO || !fechaCierre) {
+// --- Semáforo: SOLO usa fecha_aprox_cierre (o cualquier fecha estimada que le pases) ---
+const SemaforoCell: React.FC<{ fechaCierre?: string | null }> = ({ fechaCierre }) => {
+  if (!fechaCierre) {
     return (
-      <div className="flex items-center space-x-2" title="No es un prospecto nuevo o no tiene fecha asignada">
+      <div
+        className="flex items-center space-x-2"
+        title="No tiene fecha estimada de cierre"
+      >
         <span className="h-3 w-3 rounded-full bg-white border border-gray-300"></span>
         <span>N/A</span>
       </div>
@@ -49,6 +48,17 @@ const SemaforoCell: React.FC<{ motivo: VisitType; prospect?: Prospect | null }> 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const closingDate = new Date(fechaCierre);
+  if (isNaN(closingDate.getTime())) {
+    return (
+      <div
+        className="flex items-center space-x-2"
+        title="Fecha de cierre no válida"
+      >
+        <span className="h-3 w-3 rounded-full bg-white border border-gray-300"></span>
+        <span>N/A</span>
+      </div>
+    );
+  }
   closingDate.setHours(0, 0, 0, 0);
 
   const diffTime = closingDate.getTime() - today.getTime();
@@ -133,7 +143,7 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
     );
 
     const totalVisitDuration = commercialVisits.reduce(
-      (sum, visit) => sum + (visit.duracion_minutos || 0),
+      (sum, visit) => sum + (visit.tiempo_visita_min ?? 0),
       0
     );
 
@@ -142,46 +152,33 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
         ? (commercialClosures.length / commercialProspects.length) * 100
         : 0;
 
-    const latestProspectsByNit = new Map<string, Prospect>();
-    [...prospects]
-      .sort((a, b) => {
-        const tA = a.fecha_registro ? new Date(a.fecha_registro).getTime() : 0;
-        const tB = b.fecha_registro ? new Date(b.fecha_registro).getTime() : 0;
-        return tB - tA;
-      })
-      .forEach((p) => {
-        if (p.nit && !latestProspectsByNit.has(p.nit)) {
-          latestProspectsByNit.set(p.nit, p);
-        }
-      });
-
     return {
       info: commercialUsers.find((u) => u.cedula === selectedCommercialId),
       visits: commercialVisits,
       prospects: commercialProspects,
       closures: commercialClosures,
       conversionRate,
-      latestProspectsByNit,
       totalVisitDuration,
     };
   }, [selectedCommercialId, commercialUsers, visits, prospects, closures, dateRange]);
 
   // --- Helper INTELIGENTE para lat/lon ---
-  const getLatLonFromItem = (item: any, type: 'visit' | 'prospect' | 'closure'): { lat?: number; lon?: number; address?: string } => {
+  const getLatLonFromItem = (
+    item: any,
+    type: 'visit' | 'prospect' | 'closure'
+  ): { lat?: number; lon?: number; address?: string } => {
     let latRaw = item.lat ?? item.latitud ?? item.latitude;
     let lonRaw = item.lng ?? item.longitud ?? item.longitude;
     const address = item.direccion;
 
-    // --- TRUCO: Si no tiene coordenadas y es Cierre/Prospecto, buscamos en las visitas ---
+    // Si no hay coordenadas en prospecto/cierre, intenta buscarlas en una visita del mismo NIT
     if ((latRaw == null || lonRaw == null) && type !== 'visit' && item.nit) {
-      // Buscamos una visita del mismo cliente (NIT) que SÍ tenga coordenadas
-      const matchingVisit = visits.find(v => v.nit === item.nit && v.lat && v.lng);
+      const matchingVisit = visits.find((v) => v.nit === item.nit && v.lat && v.lng);
       if (matchingVisit) {
         latRaw = matchingVisit.lat;
         lonRaw = matchingVisit.lng;
       }
     }
-    // ------------------------------------------------------------------------------------
 
     if (latRaw == null || lonRaw == null) {
       return { lat: undefined, lon: undefined, address };
@@ -200,7 +197,7 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
   const renderSubTabContent = () => {
     if (!selectedCommercialData) return null;
 
-    const { visits, prospects, closures, latestProspectsByNit } = selectedCommercialData;
+    const { visits, prospects, closures } = selectedCommercialData;
 
     const openLocationModal = (
       item: Visit | Prospect | Closure,
@@ -226,7 +223,11 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
       const { lat, lon } = getLatLonFromItem(item, type);
 
       if (lat == null || lon == null) {
-        return <span className="text-gray-400 text-xs" title="Sin ubicación">N/A</span>;
+        return (
+          <span className="text-gray-400 text-xs" title="Sin ubicación">
+            N/A
+          </span>
+        );
       }
 
       return (
@@ -250,25 +251,44 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
             title="Matriz de Visitas"
             data={visits}
             columns={[
-              { key: 'fecha_hora', name: 'Fecha', render: (item: Visit) => formatDate(item.fecha_hora) },
-              { key: 'nombre_cliente', name: 'Cliente', render: (item: Visit) => item.nombre_cliente || 'N/A' },
-              { key: 'motivo', name: 'Motivo', render: (item: Visit) => item.motivo || 'N/A' },
+              {
+                key: 'fecha_hora',
+                name: 'Fecha',
+                render: (item: Visit) => formatDate(item.fecha_hora),
+              },
+              {
+                key: 'nombre_cliente',
+                name: 'Cliente',
+                render: (item: Visit) => item.nombre_cliente || 'N/A',
+              },
+              {
+                key: 'motivo',
+                name: 'Motivo',
+                render: (item: Visit) => item.motivo || 'N/A',
+              },
               {
                 key: 'semaforo',
                 name: 'Semáforo Cierre',
-                render: (item: Visit) => <SemaforoCell motivo={item.motivo} prospect={item.nit ? latestProspectsByNit.get(item.nit) : null} />
+                // 🔥 Usa fecha_aprox_cierre que viene en la visita (especialmente para motivo = 'cierre')
+                render: (item: Visit) => (
+                  <SemaforoCell fechaCierre={item.fecha_aprox_cierre} />
+                ),
               },
               {
                 key: 'duracion',
                 name: 'Duración',
-                render: (item: Visit) => formatDuration(item.duracion_minutos)
+                render: (item: Visit) => formatDuration(item.tiempo_visita_min),
               },
               {
                 key: 'verificar_ubicacion',
                 name: 'Mapa',
                 render: (item: Visit) => renderMapIconCell(item, 'visit'),
               },
-              { key: 'observaciones', name: 'Observaciones', render: (item: Visit) => item.observaciones || 'N/A' },
+              {
+                key: 'observaciones',
+                name: 'Observaciones',
+                render: (item: Visit) => item.observaciones || 'N/A',
+              },
             ]}
             emptyMessage="No hay visitas en el rango de fechas seleccionado."
           />
@@ -280,14 +300,25 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
             title="Matriz de Prospectos"
             data={prospects}
             columns={[
-              { key: 'fecha_registro', name: 'Fecha Registro', render: (item: Prospect) => formatDate(item.fecha_registro) },
-              { key: 'nombre_empresa', name: 'Empresa', render: (item: Prospect) => item.nombre_empresa || 'N/A' },
-              { key: 'contacto', name: 'Contacto', render: (item: Prospect) => item.contacto || 'N/A' },
-              { key: 'estado', name: 'Estado', render: (item: Prospect) => item.estado || 'N/A' },
               {
-                key: 'fecha_posible_cierre',
-                name: 'Semáforo Cierre',
-                render: (item: Prospect) => <SemaforoCell motivo={VisitType.PROSPECTO} prospect={item} />
+                key: 'fecha_registro',
+                name: 'Fecha Registro',
+                render: (item: Prospect) => formatDate(item.fecha_registro),
+              },
+              {
+                key: 'nombre_empresa',
+                name: 'Empresa',
+                render: (item: Prospect) => item.nombre_empresa || 'N/A',
+              },
+              {
+                key: 'contacto',
+                name: 'Contacto',
+                render: (item: Prospect) => item.contacto || 'N/A',
+              },
+              {
+                key: 'estado',
+                name: 'Estado',
+                render: (item: Prospect) => item.estado || 'N/A',
               },
               {
                 key: 'verificar_ubicacion',
@@ -305,20 +336,31 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
             title="Matriz de Cierres"
             data={closures}
             columns={[
-              { key: 'fecha_cierre', name: 'Fecha', render: (item: Closure) => formatDate(item.fecha_cierre) },
-              { key: 'cliente', name: 'Cliente', render: (item: Closure) => item.cliente || 'N/A' },
-              { key: 'tipo_cierre', name: 'Tipo', render: (item: Closure) => item.tipo_cierre || 'N/A' },
+              {
+                key: 'fecha_cierre',
+                name: 'Fecha',
+                render: (item: Closure) => formatDate(item.fecha_cierre),
+              },
+              {
+                key: 'cliente',
+                name: 'Cliente',
+                render: (item: Closure) => item.cliente || 'N/A',
+              },
+              {
+                key: 'tipo_cierre',
+                name: 'Tipo',
+                render: (item: Closure) => item.tipo_cierre || 'N/A',
+              },
               {
                 key: 'valor_estimado',
                 name: 'Valor',
                 render: (item: Closure) => {
-                  const i = item as any;
-                  const val = i.valor_estimado ?? i.valor;
+                  const val = item.valor_estimado ?? (item as any).valor;
                   if (val !== undefined && val !== null) {
                     return `$${Number(val).toLocaleString('es-CO')}`;
                   }
                   return 'N/A';
-                }
+                },
               },
               {
                 key: 'verificar_ubicacion',
@@ -342,7 +384,10 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
       </h2>
 
       <div className="bg-white p-4 rounded-lg shadow-md">
-        <label htmlFor="commercial-select" className="block text-lg font-medium text-gray-800">
+        <label
+          htmlFor="commercial-select"
+          className="block text-lg font-medium text-gray-800"
+        >
           Seleccionar Ejecutivo
         </label>
         <select
@@ -364,20 +409,28 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
         <>
           <div className="bg-white p-4 shadow-md grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Fecha Inicio</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Fecha Inicio
+              </label>
               <input
                 type="date"
                 value={dateRange.start}
-                onChange={(e) => setDateRange((prev) => ({ ...prev, start: e.target.value }))}
+                onChange={(e) =>
+                  setDateRange((prev) => ({ ...prev, start: e.target.value }))
+                }
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Fecha Fin</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Fecha Fin
+              </label>
               <input
                 type="date"
                 value={dateRange.end}
-                onChange={(e) => setDateRange((prev) => ({ ...prev, end: e.target.value }))}
+                onChange={(e) =>
+                  setDateRange((prev) => ({ ...prev, end: e.target.value }))
+                }
                 className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm"
               />
             </div>
@@ -388,7 +441,8 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
               {selectedCommercialData.info?.nombre}
             </h3>
             <p className="text-md text-gray-600">
-              {selectedCommercialData.info?.cargo} - {selectedCommercialData.info?.regional}
+              {selectedCommercialData.info?.cargo} -{' '}
+              {selectedCommercialData.info?.regional}
             </p>
           </div>
 
@@ -428,23 +482,33 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="md:col-span-1">
               <div className="bg-white p-4 rounded-lg shadow-md">
-                <h4 className="text-md font-semibold text-gle-gray-dark mb-3">Leyenda del Semáforo de Cierre</h4>
+                <h4 className="text-md font-semibold text-gle-gray-dark mb-3">
+                  Leyenda del Semáforo de Cierre
+                </h4>
                 <div className="space-y-2">
                   <div className="flex items-center space-x-2">
                     <span className="h-3 w-3 rounded-full bg-yellow-400"></span>
-                    <span className="text-sm text-gray-600">Corto Plazo (&lt;= 1 mes)</span>
+                    <span className="text-sm text-gray-600">
+                      Corto Plazo (&lt;= 1 mes)
+                    </span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="h-3 w-3 rounded-full bg-orange-400"></span>
-                    <span className="text-sm text-gray-600">Mediano Plazo (&lt;= 2 meses)</span>
+                    <span className="text-sm text-gray-600">
+                      Mediano Plazo (&lt;= 2 meses)
+                    </span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="h-3 w-3 rounded-full bg-red-500"></span>
-                    <span className="text-sm text-gray-600">Largo Plazo (&gt; 2 meses)</span>
+                    <span className="text-sm text-gray-600">
+                      Largo Plazo (&gt; 2 meses)
+                    </span>
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="h-3 w-3 rounded-full bg-white border border-gray-300"></span>
-                    <span className="text-sm text-gray-600">No Aplica / Sin Fecha</span>
+                    <span className="text-sm text-gray-600">
+                      No Aplica / Sin Fecha
+                    </span>
                   </div>
                 </div>
               </div>
@@ -458,10 +522,11 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
                   <button
                     key={tab}
                     onClick={() => setActiveSubTab(tab)}
-                    className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeSubTab === tab
+                    className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                      activeSubTab === tab
                         ? 'border-gle-red text-gle-red'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }`}
+                    }`}
                   >
                     {tab.charAt(0).toUpperCase() + tab.slice(1)}
                   </button>

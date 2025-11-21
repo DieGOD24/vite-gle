@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Visit, Prospect, Closure, VisitType } from '../types';
-import { postVisit, postProspect, postClosure } from '../services/api';
+// Si no usas directamente estos post*, puedes eliminar esta línea
+// import { postVisit, postProspect, postClosure } from '../services/api';
 
 interface ActiveVisit {
     clientName: string;
@@ -49,6 +50,28 @@ const LocationStatusIndicator: React.FC<{ status: LocationStatus; onRetry: () =>
         default:
             return null;
     }
+};
+
+// ---- Cálculo de tiempo de visita en MINUTOS (para tiempo_visita_min) ----
+// Regla:
+// - Si el tiempo es <= 0 ms → 0 minutos
+// - Si el tiempo es > 0 ms y < 1 minuto → 1 minuto
+// - Si el tiempo es >= 1 minuto → floor(minutos)
+const getElapsedMinutes = (startTime: number): number => {
+    const elapsedMs = Date.now() - startTime;
+
+    if (elapsedMs <= 0) {
+        return 0;
+    }
+
+    const minutes = Math.floor(elapsedMs / 60000);
+
+    // Si todavía no ha pasado un minuto completo pero es mayor que 0, devolvemos 1
+    if (minutes < 1) {
+        return 1;
+    }
+
+    return minutes;
 };
 
 const RegistrationForm: React.FC<RegistrationFormProps> = ({
@@ -111,30 +134,40 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
     const handleFinalSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!activeVisit) return;
+
         try {
             const visitMotivo = finalFormData.motivo || outcomeType;
             if (!['prospecto', 'mantenimiento', 'cierre'].includes(visitMotivo)) {
                 throw new Error('Motivo no válido');
             }
-            const newVisit = {
+
+            // ---- tiempo_visita_min según el esquema del backend ----
+            const tiempo_visita_min = getElapsedMinutes(activeVisit.startTime);
+
+            const newVisit: Omit<Visit, 'id_visita' | 'creado_en'> = {
                 nombre_ejecutivo: user.nombre,
                 nombre_cliente: activeVisit.clientName,
                 nit: activeVisit.clientNit,
+                sucursal: finalFormData.sucursal || '',
                 direccion: finalFormData.direccion || '',
                 contacto: finalFormData.contacto || '',
                 correo: finalFormData.correo || '',
                 telefono: finalFormData.telefono || '',
                 motivo: visitMotivo,
                 fecha_hora: new Date().toISOString(),
+                lat: location ? location.lat.toFixed(6) : '',
+                lng: location ? location.lon.toFixed(6) : '',
+                tiempo_visita_min,
+                fecha_aprox_cierre: finalFormData.fecha_aprox_cierre || null,
+                evidencia_urls: finalFormData.evidencia_urls || '',
                 observaciones: finalFormData.observaciones || '',
                 estado: 'registrado',
                 creado_por: user.cedula,
                 cedula_ejecutivo: user.cedula,
-                lat: location ? parseFloat(location.lat.toFixed(6)) : undefined,
-                lng: location ? parseFloat(location.lon.toFixed(6)) : undefined,
-                sucursal: finalFormData.sucursal || '',
             };
+
             await onRegisterVisit(newVisit);
+
             if (visitMotivo === VisitType.PROSPECTO) {
                 const newProspect = {
                     comercial_cedula: user.cedula,
@@ -169,6 +202,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
                 };
                 await onAddClosure(newClosure);
             }
+
             onClearActiveVisit();
             setShowSuccess(true);
             resetFinalState();
@@ -189,43 +223,147 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
     const renderFinalFormFields = () => {
         const commonFields = (
             <>
-                <InputField label="Dirección" name="direccion" value={finalFormData.direccion || ''} onChange={handleFinalFormChange} required />
-                <InputField label="Persona de Contacto" name="contacto" value={finalFormData.contacto || ''} onChange={handleFinalFormChange} required />
-                <InputField label="Teléfono" name="telefono" type="tel" value={finalFormData.telefono || ''} onChange={handleFinalFormChange} required />
-                <InputField label="Correo Electrónico" name="correo" type="email" value={finalFormData.correo || ''} onChange={handleFinalFormChange} required />
-                <InputField label="Sucursal" name="sucursal" value={finalFormData.sucursal || ''} onChange={handleFinalFormChange} />
+                <InputField
+                    label="Dirección"
+                    name="direccion"
+                    value={finalFormData.direccion || ''}
+                    onChange={handleFinalFormChange}
+                    required
+                />
+                <InputField
+                    label="Persona de Contacto"
+                    name="contacto"
+                    value={finalFormData.contacto || ''}
+                    onChange={handleFinalFormChange}
+                    required
+                />
+                <InputField
+                    label="Teléfono"
+                    name="telefono"
+                    type="tel"
+                    value={finalFormData.telefono || ''}
+                    onChange={handleFinalFormChange}
+                    required
+                />
+                <InputField
+                    label="Correo Electrónico"
+                    name="correo"
+                    type="email"
+                    value={finalFormData.correo || ''}
+                    onChange={handleFinalFormChange}
+                    required
+                />
+                <InputField
+                    label="Sucursal"
+                    name="sucursal"
+                    value={finalFormData.sucursal || ''}
+                    onChange={handleFinalFormChange}
+                />
+                <InputField
+                    label="Fecha Aproximada de Cierre"
+                    name="fecha_aprox_cierre"
+                    type="date"
+                    value={finalFormData.fecha_aprox_cierre || ''}
+                    onChange={handleFinalFormChange}
+                />
+                <TextAreaField
+                    label="URLs de evidencia (separadas por coma)"
+                    name="evidencia_urls"
+                    value={finalFormData.evidencia_urls || ''}
+                    onChange={handleFinalFormChange}
+                />
             </>
         );
+
         switch (outcomeType) {
             case VisitType.PROSPECTO:
                 return (
                     <>
                         {commonFields}
-                        <InputField label="Ciudad" name="ciudad" value={finalFormData.ciudad || ''} onChange={handleFinalFormChange} required />
-                        <InputField label="Sector / Actividad" name="sector" value={finalFormData.sector || ''} onChange={handleFinalFormChange} required />
-                        <TextAreaField label="Compromisos" name="compromisos" value={finalFormData.compromisos || ''} onChange={handleFinalFormChange} required />
-                        <TextAreaField label="Observaciones" name="observaciones" value={finalFormData.observaciones || ''} onChange={handleFinalFormChange} />
+                        <InputField
+                            label="Ciudad"
+                            name="ciudad"
+                            value={finalFormData.ciudad || ''}
+                            onChange={handleFinalFormChange}
+                            required
+                        />
+                        <InputField
+                            label="Sector / Actividad"
+                            name="sector"
+                            value={finalFormData.sector || ''}
+                            onChange={handleFinalFormChange}
+                            required
+                        />
+                        <TextAreaField
+                            label="Compromisos"
+                            name="compromisos"
+                            value={finalFormData.compromisos || ''}
+                            onChange={handleFinalFormChange}
+                            required
+                        />
+                        <TextAreaField
+                            label="Observaciones"
+                            name="observaciones"
+                            value={finalFormData.observaciones || ''}
+                            onChange={handleFinalFormChange}
+                        />
                     </>
                 );
             case VisitType.MANTENIMIENTO:
                 return (
                     <>
                         {commonFields}
-                        <TextAreaField label="Motivo / Tema Tratado (Observaciones)" name="observaciones" value={finalFormData.observaciones || ''} onChange={handleFinalFormChange} required />
+                        <TextAreaField
+                            label="Motivo / Tema Tratado (Observaciones)"
+                            name="observaciones"
+                            value={finalFormData.observaciones || ''}
+                            onChange={handleFinalFormChange}
+                            required
+                        />
                     </>
                 );
             case VisitType.CIERRE:
                 return (
                     <>
                         {commonFields}
-                        <InputField label="Ciudad" name="ciudad" value={finalFormData.ciudad || ''} onChange={handleFinalFormChange} />
-                        <SelectField label="Tipo de Cierre" name="tipo_cierre" options={['nuevo', 'renovacion']} value={finalFormData.tipo_cierre || ''} onChange={handleFinalFormChange} required />
-                        <InputField label="Valor del Cierre" name="valor" type="number" value={finalFormData.valor || ''} onChange={handleFinalFormChange} required/>
-                        <TextAreaField label="Compromisos" name="compromisos" value={finalFormData.compromisos || ''} onChange={handleFinalFormChange} />
-                        <TextAreaField label="Observaciones" name="observaciones" value={finalFormData.observaciones || ''} onChange={handleFinalFormChange} />
+                        <InputField
+                            label="Ciudad"
+                            name="ciudad"
+                            value={finalFormData.ciudad || ''}
+                            onChange={handleFinalFormChange}
+                        />
+                        <SelectField
+                            label="Tipo de Cierre"
+                            name="tipo_cierre"
+                            options={['nuevo', 'renovacion']}
+                            value={finalFormData.tipo_cierre || ''}
+                            onChange={handleFinalFormChange}
+                            required
+                        />
+                        <InputField
+                            label="Valor del Cierre"
+                            name="valor"
+                            type="number"
+                            value={finalFormData.valor || ''}
+                            onChange={handleFinalFormChange}
+                            required
+                        />
+                        <TextAreaField
+                            label="Compromisos"
+                            name="compromisos"
+                            value={finalFormData.compromisos || ''}
+                            onChange={handleFinalFormChange}
+                        />
+                        <TextAreaField
+                            label="Observaciones"
+                            name="observaciones"
+                            value={finalFormData.observaciones || ''}
+                            onChange={handleFinalFormChange}
+                        />
                     </>
                 );
-            default: return null;
+            default:
+                return null;
         }
     };
 
@@ -253,12 +391,29 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
         return (
             <div className="bg-white p-8 rounded-lg shadow-md max-w-lg mx-auto">
                 <h2 className="text-3xl font-bold text-gray-800 mb-2">Iniciar Visita</h2>
-                <p className="text-gray-600 mb-6">Completa los datos del cliente para iniciar el cronómetro de la visita.</p>
+                <p className="text-gray-600 mb-6">
+                    Completa los datos del cliente para iniciar el cronómetro de la visita.
+                </p>
                 <form onSubmit={handleStartVisit} className="space-y-6">
-                    <InputField label="Nombre Cliente / Empresa" name="clientName" value={startFormData.clientName} onChange={handleStartFormChange} required />
-                    <InputField label="NIT del Cliente" name="clientNit" value={startFormData.clientNit} onChange={handleStartFormChange} required />
+                    <InputField
+                        label="Nombre Cliente / Empresa"
+                        name="clientName"
+                        value={startFormData.clientName}
+                        onChange={handleStartFormChange}
+                        required
+                    />
+                    <InputField
+                        label="NIT del Cliente"
+                        name="clientNit"
+                        value={startFormData.clientNit}
+                        onChange={handleStartFormChange}
+                        required
+                    />
                     <div className="pt-2">
-                        <button type="submit" className="w-full bg-gle-red text-white font-bold py-3 px-8 rounded-lg hover:bg-red-700 transition duration-300 flex items-center justify-center space-x-2 text-lg">
+                        <button
+                            type="submit"
+                            className="w-full bg-gle-red text-white font-bold py-3 px-8 rounded-lg hover:bg-red-700 transition duration-300 flex items-center justify-center space-x-2 text-lg"
+                        >
                             <i className="fas fa-play-circle"></i>
                             <span>Iniciar Visita</span>
                         </button>
@@ -270,14 +425,16 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
 
     return (
         <div className="bg-white p-8 rounded-lg shadow-md max-w-4xl mx-auto">
-            <h2 className="text-3xl font-bold text-gle-red mb-6">Registrar Resultado de Visita a: {activeVisit.clientName}</h2>
+            <h2 className="text-3xl font-bold text-gle-red mb-6">
+                Registrar Resultado de Visita a: {activeVisit.clientName}
+            </h2>
             <form onSubmit={handleFinalSubmit} className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="md:col-span-2">
                         <LocationStatusIndicator status={locationStatus} onRetry={getLocation} />
                     </div>
                     <div className="md:col-span-2">
-                       <SelectField
+                        <SelectField
                             label="Resultado de la Visita"
                             name="outcomeType"
                             value={outcomeType}
@@ -289,36 +446,116 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
                     {renderFinalFormFields()}
                 </div>
                 <div className="flex justify-end pt-4">
-                     <button type="submit" className="bg-gle-red text-white font-bold py-3 px-8 rounded-lg hover:bg-red-700 transition duration-300 flex items-center space-x-2 disabled:bg-gray-400" disabled={locationStatus !== 'success'}>
+                    <button
+                        type="submit"
+                        className="bg-gle-red text-white font-bold py-3 px-8 rounded-lg hover:bg-red-700 transition duration-300 flex items-center space-x-2 disabled:bg-gray-400"
+                        disabled={locationStatus !== 'success'}
+                    >
                         <i className="fas fa-save"></i>
                         <span>Guardar Registro Final</span>
-                     </button>
+                    </button>
                 </div>
             </form>
         </div>
     );
 };
 
-const InputField = ({ label, name, type = 'text', onChange, required = false, value = '' }: { label: string; name: string; type?: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; required?: boolean; value?: string }) => (
+const InputField = ({
+    label,
+    name,
+    type = 'text',
+    onChange,
+    required = false,
+    value = '',
+}: {
+    label: string;
+    name: string;
+    type?: string;
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    required?: boolean;
+    value?: string;
+}) => (
     <div>
-        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}{required && ' *'}</label>
-        <input type={type} id={name} name={name} onChange={onChange} required={required} value={value} className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-gle-red focus:border-transparent" />
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">
+            {label}
+            {required && ' *'}
+        </label>
+        <input
+            type={type}
+            id={name}
+            name={name}
+            onChange={onChange}
+            required={required}
+            value={value}
+            className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-gle-red focus:border-transparent"
+        />
     </div>
 );
 
-const TextAreaField = ({ label, name, onChange, required = false, value = '' }: { label:string; name:string; onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void; required?: boolean; value?: string }) => (
+const TextAreaField = ({
+    label,
+    name,
+    onChange,
+    required = false,
+    value = '',
+}: {
+    label: string;
+    name: string;
+    onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+    required?: boolean;
+    value?: string;
+}) => (
     <div className="md:col-span-2">
-        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}{required && ' *'}</label>
-        <textarea id={name} name={name} rows={4} onChange={onChange} required={required} value={value} className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-gle-red focus:border-transparent"></textarea>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">
+            {label}
+            {required && ' *'}
+        </label>
+        <textarea
+            id={name}
+            name={name}
+            rows={4}
+            onChange={onChange}
+            required={required}
+            value={value}
+            className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-gle-red focus:border-transparent"
+        ></textarea>
     </div>
 );
 
-const SelectField = ({ label, name, options, onChange, required = false, value='' }: { label: string; name: string; options: string[]; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; required?: boolean; value?:string }) => (
-     <div>
-        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">{label}{required && ' *'}</label>
-        <select id={name} name={name} onChange={onChange} required={required} value={value} className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-gle-red focus:border-transparent bg-white text-gray-900">
+const SelectField = ({
+    label,
+    name,
+    options,
+    onChange,
+    required = false,
+    value = '',
+}: {
+    label: string;
+    name: string;
+    options: string[];
+    onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+    required?: boolean;
+    value?: string;
+}) => (
+    <div>
+        <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1">
+            {label}
+            {required && ' *'}
+        </label>
+        <select
+            id={name}
+            name={name}
+            onChange={onChange}
+            required={required}
+            value={value}
+            className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-gle-red focus:border-transparent bg-white text-gray-900"
+        >
             <option value="">Seleccione...</option>
-            {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            {options.map((opt) => (
+                <option key={opt} value={opt}>
+                    {opt}
+                </option>
+            ))}
         </select>
     </div>
 );
