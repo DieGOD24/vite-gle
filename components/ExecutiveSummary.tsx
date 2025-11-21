@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-    PieChart, Pie, Cell, RadialBarChart, RadialBar, PolarAngleAxis, LineChart, Line
+    PieChart, Pie, Cell, RadialBarChart, PolarAngleAxis, LineChart, Line,
+    RadialBar
 } from 'recharts';
 import { User, Role, Visit, Prospect, Closure, VisitType } from '../types';
 import KpiCard from './ui/KpiCard';
@@ -23,20 +24,30 @@ interface ExecutiveSummaryProps {
     dateRange: { start: string; end: string };
 }
 
+// --- Función Auxiliar para Formato de Tiempo ---
+const formatDuration = (totalMinutes: number): string => {
+    if (!totalMinutes || totalMinutes === 0) return '0 min';
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    let result = '';
+    if (hours > 0) result += `${hours}h `;
+    if (minutes > 0 || hours === 0) result += `${minutes}min`;
+    return result.trim();
+};
+
 const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
     visits, prospects, closures, previousData, user, users, selectedCommercialName, selectedRegion, dateRange
 }) => {
-    
-    // --- CORRECCIÓN DE FECHAS (BUG UTC) ---
-    // (Esta parte ya estaba bien, asegura que los filtros de fecha usen la hora local)
+
+    // --- 1. FILTRO DE FECHAS ---
     const { cleanVisits, cleanProspects, cleanClosures, cleanPrevVisits, cleanPrevProspects, cleanPrevClosures } = useMemo(() => {
         const start = dateRange.start ? new Date(`${dateRange.start}T00:00:00`) : null;
         const end = dateRange.end ? new Date(`${dateRange.end}T23:59:59`) : null;
 
         if (!start || !end) {
-            return { 
-                cleanVisits: visits.filter(Boolean), 
-                cleanProspects: prospects.filter(Boolean), 
+            return {
+                cleanVisits: visits.filter(Boolean),
+                cleanProspects: prospects.filter(Boolean),
                 cleanClosures: closures.filter(Boolean),
                 cleanPrevVisits: previousData.visits.filter(Boolean),
                 cleanPrevProspects: previousData.prospects.filter(Boolean),
@@ -46,15 +57,15 @@ const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
 
         const diffTime = Math.abs(end.getTime() - start.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
+
         const prevStart = new Date(start);
         prevStart.setDate(start.getDate() - diffDays);
         const prevEnd = new Date(start);
         prevEnd.setDate(start.getDate() - 1);
-        prevEnd.setHours(23,59,59,999);
+        prevEnd.setHours(23, 59, 59, 999);
 
-        const filterByDate = (item: Visit | Prospect | Closure, s: Date, e: Date) => {
-            const itemDateStr = 'fecha_hora' in item ? item.fecha_hora : 'fecha_registro' in item ? item.fecha_registro : item.fecha_cierre;
+        const filterByDate = (item: any, s: Date, e: Date) => {
+            const itemDateStr = item.fecha_hora || item.fecha_registro || item.fecha_cierre;
             if (!itemDateStr) return false;
             const itemDate = new Date(itemDateStr);
             return itemDate >= s && itemDate <= e;
@@ -71,6 +82,7 @@ const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
     }, [visits, prospects, closures, previousData, dateRange]);
 
 
+    // --- 2. DATOS PARA GRÁFICAS ---
     const mainChartData = useMemo(() => {
         if (selectedCommercialName || user.cargo === Role.COMERCIAL) {
             const counts: Record<string, number> = {};
@@ -103,7 +115,7 @@ const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
             .sort((a, b) => b.visitas - a.visitas);
     }, [cleanVisits, selectedCommercialName, user, users]);
 
-    
+    // --- 3. TENDENCIAS ---
     const calculateTrend = (current: number, previous: number) => {
         if (previous === 0) return current > 0 ? 100.0 : 0.0;
         return ((current - previous) / previous) * 100;
@@ -116,23 +128,53 @@ const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
     const prevConversionRate = cleanPrevProspects.length > 0 ? (cleanPrevClosures.length / cleanPrevProspects.length) * 100 : 0;
     const conversionTrend = conversionRate - prevConversionRate;
 
-    // --- ¡CORRECCIÓN DEL BUG DE VALOR! ---
-    // Usamos Number(c.valor_estimado) para forzar la conversión
-    const totalSalesValue = useMemo(() => cleanClosures.reduce((sum: number, c: Closure) => sum + (Number(c.valor_estimado) || 0), 0), [cleanClosures]);
-    const prevTotalSalesValue = useMemo(() => cleanPrevClosures.reduce((sum: number, c: Closure) => sum + (Number(c.valor_estimado) || 0), 0), [cleanPrevClosures]);
-    
+
+
+    // --- NUEVO CÁLCULO: PROMEDIO DE TIEMPO EN VISITAS ---
+    const averageVisitDuration = useMemo(() => {
+        const total = cleanVisits.reduce((sum, v) => sum + (v.tiempo_visita_min || 0), 0);
+        const average = cleanVisits.length > 0 ? total / cleanVisits.length : 0;
+        return Math.round(average * 100) / 100;
+    }, [cleanVisits]);
+
+    const prevAverageVisitDuration = useMemo(() => {
+        const total = cleanPrevVisits.reduce((sum, v) => sum + (v.tiempo_visita_min || 0), 0);
+        return cleanPrevVisits.length > 0 ? total / cleanPrevVisits.length : 0;
+    }, [cleanPrevVisits]);
+
+    const durationTrend = calculateTrend(averageVisitDuration, prevAverageVisitDuration);
+
+
+    // --- 4. LÓGICA BLINDADA PARA SUMAR VALORES ---
+    const parseValue = (item: any) => {
+        const rawVal = item.valor_estimado ?? item.valor ?? item.value ?? 0;
+        const strVal = String(rawVal).replace(/[^0-9.-]+/g, "");
+        const num = parseFloat(strVal);
+        return isNaN(num) ? 0 : num;
+    };
+
+    const totalSalesValue = useMemo(() =>
+        cleanClosures.reduce((sum, c) => sum + parseValue(c), 0),
+        [cleanClosures]);
+
+    const prevTotalSalesValue = useMemo(() =>
+        cleanPrevClosures.reduce((sum, c) => sum + parseValue(c), 0),
+        [cleanPrevClosures]);
+
     const averageDealSize = cleanClosures.length > 0 ? totalSalesValue / cleanClosures.length : 0;
     const prevAverageDealSize = cleanPrevClosures.length > 0 ? prevTotalSalesValue / cleanPrevClosures.length : 0;
     const salesValueTrend = calculateTrend(totalSalesValue, prevTotalSalesValue);
     const avgDealSizeTrend = calculateTrend(averageDealSize, prevAverageDealSize);
 
+
+    // --- 5. GRÁFICAS ---
     const PIE_COLORS = { [VisitType.PROSPECTO]: '#c00000', [VisitType.MANTENIMIENTO]: '#444444', [VisitType.CIERRE]: '#9E9E9E' };
 
     const visitsByType = useMemo(() => {
-        const counts: Record<VisitType, number> = { [VisitType.PROSPECTO]: 0, [VisitType.MANTENIMIENTO]: 0, [VisitType.CIERRE]: 0 };
+        const counts: Record<string, number> = { [VisitType.PROSPECTO]: 0, [VisitType.MANTENIMIENTO]: 0, [VisitType.CIERRE]: 0 };
         cleanVisits.forEach(visit => {
             if (counts[visit.motivo] !== undefined) {
-                 counts[visit.motivo] = (counts[visit.motivo] || 0) + 1;
+                counts[visit.motivo] = (counts[visit.motivo] || 0) + 1;
             }
         });
         return Object.entries(counts).map(([name, value]) => ({ name, value }));
@@ -175,11 +217,11 @@ const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
         const processItems = (items: (Visit | Prospect | Closure)[], type: 'Visitas' | 'Prospectos' | 'Cierres') => {
             items.forEach(item => {
                 const itemDateStr = 'fecha_hora' in item ? item.fecha_hora : 'fecha_registro' in item ? item.fecha_registro : (item as Closure).fecha_cierre;
-                if (!itemDateStr) return; 
-                
+                if (!itemDateStr) return;
+
                 const itemDate = new Date(itemDateStr);
                 const dateKey = itemDate.toISOString().split('T')[0];
-                
+
                 if (!dataByDate.has(dateKey)) {
                     dataByDate.set(dateKey, {
                         date: dateKey,
@@ -228,17 +270,14 @@ const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                 }} />
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <KpiCard title="Visitas Totales" value={cleanVisits.length} icon="fa-route" color="gle-blue" comparisonValue={visitsTrend} comparisonPeriod="vs. período ant."/>
-                <KpiCard title="Prospectos Nuevos" value={cleanProspects.length} icon="fa-user-plus" color="gle-red" comparisonValue={prospectsTrend} comparisonPeriod="vs. período ant."/>
-                <KpiCard title="Cierres Realizados" value={cleanClosures.length} icon="fa-handshake" color="gle-gray" comparisonValue={closuresTrend} comparisonPeriod="vs. período ant."/>
-                
-                {/* Eliminamos este KPI porque 'duracion_minutos' no existe en el tipo 'Visit' 
-                  (basado en el 'types.ts' que corregimos)
-                */}
-                {/* <KpiCard title="Duración Prom. de Visita" value={`${averageVisitDuration.toFixed(0)} min`} icon="fa-clock" color="gle-gray" comparisonValue={avgDurationTrend} comparisonPeriod="vs. período ant."/> */}
-                
-                <KpiCard title="Valor Total Cierres" value={`$${totalSalesValue.toLocaleString('es-CO')}`} icon="fa-dollar-sign" color="gle-blue" comparisonValue={salesValueTrend} comparisonPeriod="vs. período ant."/>
-                <KpiCard title="Ticket Promedio" value={`$${averageDealSize.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`} icon="fa-receipt" color="gle-red" comparisonValue={avgDealSizeTrend} comparisonPeriod="vs. período ant."/>
+                <KpiCard title="Visitas Totales" value={cleanVisits.length} icon="fa-route" color="gle-blue" comparisonValue={visitsTrend} comparisonPeriod="vs. período ant." />
+                <KpiCard title="Prospectos Nuevos" value={cleanProspects.length} icon="fa-user-plus" color="gle-red" comparisonValue={prospectsTrend} comparisonPeriod="vs. período ant." />
+                <KpiCard title="Cierres Realizados" value={cleanClosures.length} icon="fa-handshake" color="gle-gray" comparisonValue={closuresTrend} comparisonPeriod="vs. período ant." />
+
+                <KpiCard title="Valor Total Cierres" value={`$${totalSalesValue.toLocaleString('es-CO')}`} icon="fa-dollar-sign" color="gle-blue" comparisonValue={salesValueTrend} comparisonPeriod="vs. período ant." />
+                <KpiCard title="Ticket Promedio" value={`$${averageDealSize.toLocaleString('es-CO', { maximumFractionDigits: 0 })}`} icon="fa-receipt" color="gle-red" comparisonValue={avgDealSizeTrend} comparisonPeriod="vs. período ant." />
+
+                {/* GRÁFICA DE CONVERSIÓN */}
                 <div className="bg-white p-4 rounded-lg shadow-md flex flex-col items-center justify-center lg:col-span-2">
                     <h3 className="text-gray-500 text-sm font-medium mb-1">Tasa de Conversión</h3>
                     <ResponsiveContainer width="100%" height={80}>
@@ -261,8 +300,19 @@ const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                         {conversionTrend >= 0 ? '+' : ''}{conversionTrend.toFixed(1)} pts vs. período ant.
                     </p>
                 </div>
+
+                {/* --- AQUI ESTÁ EL NUEVO KPI SOLICITADO --- */}
+                <KpiCard
+                    title="Tiempo Total en Visitas"
+                    value={formatDuration(averageVisitDuration)}
+                    icon="fa-hourglass-half"
+                    color="gle-blue"
+                    comparisonValue={durationTrend}
+                    comparisonPeriod="vs. período ant."
+                />
             </div>
-            {/* ... (El resto del JSX no cambia) ... */}
+
+            {/* ... GRÁFICAS INFERIORES (Sin cambios) ... */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 <div className="bg-white p-6 rounded-lg shadow-md lg:col-span-3">
                     <h3 className="text-lg font-semibold mb-4">{mainChartTitle}</h3>
@@ -274,7 +324,7 @@ const ExecutiveSummary: React.FC<ExecutiveSummaryProps> = ({
                         >
                             <CartesianGrid strokeDasharray="3 3" />
                             {user.cargo === Role.COMERCIAL || selectedCommercialName ? <XAxis dataKey="name" /> : <XAxis type="number" allowDecimals={false} />}
-                            {user.cargo === Role.COMERCIAL || selectedCommercialName ? <YAxis /> : <YAxis type="category" dataKey="name" width={80} tick={{fontSize: 12}} />}
+                            {user.cargo === Role.COMERCIAL || selectedCommercialName ? <YAxis /> : <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 12 }} />}
                             <Tooltip />
                             <Bar dataKey="visitas" fill="#c00000" />
                         </BarChart>

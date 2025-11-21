@@ -206,8 +206,8 @@ const ClientAnalysis: React.FC<ClientAnalysisProps> = ({
                   key={client.nit}
                   onClick={() => setSelectedClientNit(client.nit)}
                   className={`w-full text-left p-3 rounded-md transition duration-150 flex justify-between items-center ${selectedClientNit === client.nit
-                      ? 'bg-gle-red text-white shadow-md'
-                      : 'hover:bg-gray-100 text-gray-700'
+                    ? 'bg-gle-red text-white shadow-md'
+                    : 'hover:bg-gray-100 text-gray-700'
                     }`}
                 >
                   <div>
