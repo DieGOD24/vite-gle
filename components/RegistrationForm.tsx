@@ -159,7 +159,6 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
                 lng: location ? location.lon.toFixed(6) : '',
                 tiempo_visita_min,
                 fecha_aprox_cierre: finalFormData.fecha_aprox_cierre || null,
-                evidencia_urls: finalFormData.evidencia_urls || '',
                 observaciones: finalFormData.observaciones || '',
                 estado: 'registrado',
                 creado_por: user.cedula,
@@ -266,12 +265,7 @@ const RegistrationForm: React.FC<RegistrationFormProps> = ({
                     value={finalFormData.fecha_aprox_cierre || ''}
                     onChange={handleFinalFormChange}
                 />
-                <TextAreaField
-                    label="URLs de evidencia (separadas por coma)"
-                    name="evidencia_urls"
-                    value={finalFormData.evidencia_urls || ''}
-                    onChange={handleFinalFormChange}
-                />
+
             </>
         );
 

@@ -105,6 +105,7 @@ export interface Prospect {
  * Omit<Closure, 'id_cierre' | 'creado_en'>
  */
 export interface Closure {
+  valor: any;
   id_cierre: string;
 
   comercial_cedula: string;
