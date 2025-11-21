@@ -147,10 +147,12 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
       0
     );
 
-    const conversionRate =
-      commercialProspects.length > 0
-        ? (commercialClosures.length / commercialProspects.length) * 100
-        : 0;
+    // --- CÁLCULO DE TASA DE CONVERSIÓN (CORREGIDO) ---
+    // Usamos la misma lógica que en ExecutiveSummary:
+    // Si hay prospectos > 0, calculamos porcentaje. Si no, es 0.
+    const conversionRate = commercialProspects.length > 0
+      ? (commercialClosures.length / commercialProspects.length) * 100
+      : 0;
 
     return {
       info: commercialUsers.find((u) => u.cedula === selectedCommercialId),
@@ -221,7 +223,6 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
       type: 'visit' | 'prospect' | 'closure'
     ) => {
       const { lat, lon } = getLatLonFromItem(item, type);
-
       if (lat == null || lon == null) {
         return (
           <span className="text-gray-400 text-xs" title="Sin ubicación">
@@ -237,7 +238,7 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
             openLocationModal(item, type);
           }}
           className="text-gle-blue hover:text-blue-700 text-xl flex items-center justify-center w-8 h-8 rounded-full hover:bg-blue-50 transition"
-          title={type === 'visit' ? 'Ver ubicación exacta' : 'Ver ubicación (basada en visitas)'}
+          title="Ver ubicación en mapa"
         >
           <i className="fas fa-map-marker-alt"></i>
         </button>

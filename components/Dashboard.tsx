@@ -318,10 +318,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   accept="image/*"
                   onChange={handleLogoUpload}
                 />
-                <label htmlFor="logo-upload" className="bg-gray-200 text-gray-700 px-4 py-2 rounded hover:bg-gray-300 transition duration-200 flex items-center space-x-2 cursor-pointer">
-                  <i className="fas fa-upload"></i>
-                  <span>Cambiar Logo</span>
-                </label>
+
               </>
             )}
             <button onClick={onLogout} className="bg-gle-red text-white px-4 py-2 rounded hover:bg-red-700 transition duration-200 flex items-center space-x-2">
