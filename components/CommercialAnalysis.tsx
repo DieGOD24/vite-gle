@@ -137,10 +137,12 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
       0
     );
 
-    const conversionRate =
-      commercialProspects.length > 0
-        ? (commercialClosures.length / commercialProspects.length) * 100
-        : 0;
+    // --- CÁLCULO DE TASA DE CONVERSIÓN (CORREGIDO) ---
+    // Usamos la misma lógica que en ExecutiveSummary:
+    // Si hay prospectos > 0, calculamos porcentaje. Si no, es 0.
+    const conversionRate = commercialProspects.length > 0
+      ? (commercialClosures.length / commercialProspects.length) * 100
+      : 0;
 
     const latestProspectsByNit = new Map<string, Prospect>();
     [...prospects]
@@ -166,22 +168,19 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
     };
   }, [selectedCommercialId, commercialUsers, visits, prospects, closures, dateRange]);
 
-  // --- Helper INTELIGENTE para lat/lon ---
+  // --- Helper para lat/lon ---
   const getLatLonFromItem = (item: any, type: 'visit' | 'prospect' | 'closure'): { lat?: number; lon?: number; address?: string } => {
     let latRaw = item.lat ?? item.latitud ?? item.latitude;
     let lonRaw = item.lng ?? item.longitud ?? item.longitude;
     const address = item.direccion;
 
-    // --- TRUCO: Si no tiene coordenadas y es Cierre/Prospecto, buscamos en las visitas ---
-    if ((latRaw == null || lonRaw == null) && type !== 'visit' && item.nit) {
-      // Buscamos una visita del mismo cliente (NIT) que SÍ tenga coordenadas
+    if ((latRaw == null || lonRaw == null) && type !== 'visit' && item.nit && selectedCommercialId) {
       const matchingVisit = visits.find(v => v.nit === item.nit && v.lat && v.lng);
       if (matchingVisit) {
         latRaw = matchingVisit.lat;
         lonRaw = matchingVisit.lng;
       }
     }
-    // ------------------------------------------------------------------------------------
 
     if (latRaw == null || lonRaw == null) {
       return { lat: undefined, lon: undefined, address };
@@ -224,9 +223,8 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
       type: 'visit' | 'prospect' | 'closure'
     ) => {
       const { lat, lon } = getLatLonFromItem(item, type);
-
       if (lat == null || lon == null) {
-        return <span className="text-gray-400 text-xs" title="Sin ubicación">N/A</span>;
+        return <span className="text-gray-300 text-xs cursor-not-allowed" title="Sin ubicación">N/A</span>;
       }
 
       return (
@@ -236,7 +234,7 @@ const CommercialAnalysis: React.FC<CommercialAnalysisProps> = ({
             openLocationModal(item, type);
           }}
           className="text-gle-blue hover:text-blue-700 text-xl flex items-center justify-center w-8 h-8 rounded-full hover:bg-blue-50 transition"
-          title={type === 'visit' ? 'Ver ubicación exacta' : 'Ver ubicación (basada en visitas)'}
+          title="Ver ubicación en mapa"
         >
           <i className="fas fa-map-marker-alt"></i>
         </button>
